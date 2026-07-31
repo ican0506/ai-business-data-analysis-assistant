@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app.core.security import create_access_token, decode_access_token
@@ -9,7 +9,7 @@ from app.schemas.auth import LoginRequest, RegisterRequest
 from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/api/v1/auth", tags=["认证"])
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
 service = AuthService()
 
 
@@ -50,6 +50,16 @@ def login(request: LoginRequest, db: Session = Depends(get_db)) -> dict:
         "message": "登录成功",
         "data": {"access_token": create_access_token(str(user.id)), "token_type": "bearer"},
     }
+
+
+@router.post("/token", include_in_schema=False)
+def swagger_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)) -> dict:
+    """提供给 Swagger OAuth2 授权弹窗使用的标准表单登录接口。"""
+    request = LoginRequest(username=form_data.username, password=form_data.password)
+    user = service.authenticate(db, request)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="用户名或密码错误")
+    return {"access_token": create_access_token(str(user.id)), "token_type": "bearer"}
 
 
 @router.get("/me")

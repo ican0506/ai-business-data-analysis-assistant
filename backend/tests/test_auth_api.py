@@ -79,6 +79,22 @@ def test_login_returns_access_token(client: TestClient) -> None:
     assert body["data"]["access_token"]
 
 
+def test_swagger_token_endpoint_accepts_form_credentials(client: TestClient) -> None:
+    client.post(
+        "/api/v1/auth/register",
+        json={"username": "swagger_user", "email": "swagger@example.com", "password": "Password123"},
+    )
+
+    response = client.post(
+        "/api/v1/auth/token",
+        data={"username": "swagger_user", "password": "Password123"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["token_type"] == "bearer"
+    assert response.json()["access_token"]
+
+
 def test_me_requires_valid_token_and_returns_current_user(client: TestClient) -> None:
     register_response = client.post(
         "/api/v1/auth/register",

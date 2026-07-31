@@ -1,15 +1,5 @@
-async function showServiceStatus() {
-  const target = document.querySelector("#service-status");
-  try {
-    const response = await fetch("/api/v1/health");
-    const payload = await response.json();
-    const status = payload.data.status;
-    target.textContent = status === "ok" ? "服务与数据库连接正常" : "服务已启动，数据库暂不可用";
-    target.classList.add(status);
-  } catch {
-    target.textContent = "无法连接后端服务，请稍后重试";
-    target.classList.add("error");
-  }
-}
-
-showServiceStatus();
+let token="",datasetId=null;const status=document.querySelector('#dataset-status');const charts=['trend-chart','region-chart','completion-chart'].map(id=>echarts.init(document.querySelector(`#${id}`)));
+const api=(url,options={})=>fetch(url,{...options,headers:{Authorization:`Bearer ${token}`,...options.headers}}).then(async r=>{const data=await r.json();if(!r.ok)throw new Error(data.detail||'请求失败');return data});
+document.querySelector('#login-form').onsubmit=async e=>{e.preventDefault();try{const data=await api('/api/v1/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:username.value,password:password.value})});token=data.data.access_token;document.querySelector('#user-name').textContent=username.value;fileInput.disabled=uploadBtn.disabled=false;status.textContent='登录成功，请选择业务文件';}catch(err){status.textContent=err.message}};
+uploadBtn.onclick=async()=>{const file=fileInput.files[0];if(!file)return status.textContent='请选择 CSV 或 XLSX 文件';try{uploadBtn.disabled=true;const form=new FormData();form.append('file',file);const upload=await api('/api/v1/datasets/upload',{method:'POST',body:form});datasetId=upload.data.id;status.textContent=`已解析 ${upload.data.row_count} 行，正在清洗...`;await api(`/api/v1/datasets/${datasetId}/clean`,{method:'POST'});const metrics=await api(`/api/v1/datasets/${datasetId}/metrics`);render(metrics.data);status.textContent='分析完成，仪表盘已更新';}catch(err){status.textContent=err.message}finally{uploadBtn.disabled=false}};
+function render(m){rows.textContent=m.total_rows;average.textContent=m.sales_amount.average??'--';completion.textContent=m.completion_rate==null?'--':`${m.completion_rate}%`;growth.textContent=m.growth_rate==null?'--':`${m.growth_rate}%`;const names=m.top_regions.map(x=>x.name),values=m.top_regions.map(x=>x.value);charts[0].setOption({xAxis:{type:'category',data:names},yAxis:{type:'value'},series:[{type:'line',smooth:true,data:values,areaStyle:{color:'#bfdbfe'},lineStyle:{color:'#2563eb'}}]});charts[1].setOption({xAxis:{type:'value'},yAxis:{type:'category',data:names},series:[{type:'bar',data:values,itemStyle:{color:'#38bdf8'}}]});const total=m.sales_amount.total||0,target=m.completion_rate?total/(m.completion_rate/100):0;charts[2].setOption({series:[{type:'pie',radius:['55%','75%'],data:[{name:'已完成',value:total},{name:'未完成',value:Math.max(target-total,0)}],label:{formatter:'{b}\n{d}%'}}]})}fetch('/api/v1/health').then(r=>r.json()).then(()=>serviceStatus.textContent='服务运行正常').catch(()=>serviceStatus.textContent='服务不可用');window.onresize=()=>charts.forEach(c=>c.resize());

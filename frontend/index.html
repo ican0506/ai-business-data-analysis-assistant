@@ -3,16 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AI 智能数据分析助手</title>
+    <title>AI智能数据分析助手</title>
     <link rel="stylesheet" href="/static/css/app.css" />
   </head>
   <body>
-    <main class="welcome-panel">
-      <p class="eyebrow">AI Business Data Analysis Assistant</p>
-      <h1>AI 智能数据分析助手</h1>
-      <p>基础服务已启动。下一阶段将接入登录、数据上传与销售运营分析。</p>
-      <p id="service-status" class="status">正在检查后端服务状态…</p>
-    </main>
+    <div class="app-shell">
+      <aside><div class="brand">AI<span>Insight</span></div><p>企业智能数据分析</p><nav><a class="active">数据驾驶舱</a><a>数据集管理</a><a>AI 分析报告</a></nav><div class="side-foot"><span id="service-status">服务检查中</span><small>v0.1.0</small></div></aside>
+      <main>
+        <header><div><p class="eyebrow">BUSINESS INTELLIGENCE · AI 智能数据分析助手</p><h1>运营数据驾驶舱</h1></div><div class="badge" id="user-name">未登录</div></header>
+        <section class="workspace">
+          <form id="login-form"><h2>开始分析</h2><input id="username" placeholder="用户名" required /><input id="password" type="password" placeholder="密码" required /><button>登录工作台</button></form>
+          <div class="upload-box"><h2>导入业务数据</h2><p>支持 CSV / XLSX，单文件最大 20 MB</p><input id="file-input" type="file" accept=".csv,.xlsx" disabled /><button id="upload-btn" disabled>上传并解析</button><p id="dataset-status">请先登录</p></div>
+        </section>
+        <section class="summary" id="summary"><article><span>数据总量</span><strong id="rows">--</strong><small>清洗后有效记录</small></article><article><span>销售额均值</span><strong id="average">--</strong><small>每条有效记录</small></article><article><span>目标完成率</span><strong id="completion">--</strong><small>销售额 / 目标额</small></article><article><span>首末增长率</span><strong id="growth">--</strong><small>按日期比较</small></article></section>
+        <section class="charts"><article class="chart-card wide"><h2>销售趋势</h2><div id="trend-chart"></div></article><article class="chart-card"><h2>区域销售 TOP</h2><div id="region-chart"></div></article><article class="chart-card"><h2>目标完成情况</h2><div id="completion-chart"></div></article></section>
+      </main>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
     <script src="/static/js/app.js"></script>
   </body>
 </html>

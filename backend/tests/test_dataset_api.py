@@ -141,3 +141,30 @@ def test_clean_dataset_standardizes_sales_columns_and_removes_invalid_rows(clien
     assert body["data"]["removed_duplicate_rows"] == 1
     assert body["data"]["columns"] == ["date", "region", "sales_amount", "target_amount"]
     assert body["data"]["preview"][0]["sales_amount"] == 1200
+
+
+def test_get_dataset_metrics_returns_sales_summary_and_region_ranking(client: TestClient) -> None:
+    csv_content = (
+        "date,region,sales_amount,target_amount\n"
+        "2026-07-01,east,1200,1500\n"
+        "2026-07-02,south,800,1000\n"
+        "2026-07-03,east,1800,2000\n"
+    )
+    headers = auth_headers(client)
+    upload_response = client.post(
+        "/api/v1/datasets/upload",
+        headers=headers,
+        files={"file": ("sales.csv", BytesIO(csv_content.encode("utf-8")), "text/csv")},
+    )
+    dataset_id = upload_response.json()["data"]["id"]
+    client.post(f"/api/v1/datasets/{dataset_id}/clean", headers=headers)
+
+    response = client.get(f"/api/v1/datasets/{dataset_id}/metrics", headers=headers)
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["total_rows"] == 3
+    assert data["sales_amount"]["average"] == 1266.67
+    assert data["sales_amount"]["maximum"] == 1800
+    assert data["completion_rate"] == 84.44
+    assert data["top_regions"][0] == {"name": "east", "value": 3000}

@@ -18,6 +18,7 @@
 - 用户注册、登录、JWT 认证
 - 当前登录用户查询：`GET /api/v1/auth/me`
 - 用户表 SQL 初始化脚本：`backend/sql/001_create_users_table.sql`
+- 数据集与字段元信息 SQL 补丁：`backend/sql/002_create_dataset_tables.sql`
 
 ## 本地运行
 
@@ -40,6 +41,13 @@ Copy-Item .env.example .env
 - 登录：`POST /api/v1/auth/login`
 - 当前用户：`GET /api/v1/auth/me`
 
+## 数据集上传接口
+
+- 上传并解析：`POST /api/v1/datasets/upload`
+- 必须先在 Swagger 的 **Authorize** 中完成登录授权。
+- 支持 `.csv`、`.xlsx`，单文件最大 20 MB；CSV 自动尝试 UTF-8-SIG、UTF-8 与 GBK 编码。
+- 接口返回数据集 ID、行列数、字段类型、缺失值数量和前 20 行预览。原始文件存放在 `storage/uploads/`，不会提交到 Git。
+
 示例注册参数：
 
 ```json
@@ -56,6 +64,7 @@ Copy-Item .env.example .env
 
 ```sql
 SOURCE backend/sql/001_create_users_table.sql;
+SOURCE backend/sql/002_create_dataset_tables.sql;
 ```
 
 当前开发环境启动 FastAPI 时也会自动创建已声明的数据表。正式生产环境后续会改为 Alembic 迁移管理。

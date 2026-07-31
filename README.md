@@ -19,6 +19,7 @@
 - 当前登录用户查询：`GET /api/v1/auth/me`
 - 用户表 SQL 初始化脚本：`backend/sql/001_create_users_table.sql`
 - 数据集与字段元信息 SQL 补丁：`backend/sql/002_create_dataset_tables.sql`
+- 数据清洗记录 SQL 补丁：`backend/sql/003_create_dataset_cleaning_runs.sql`
 
 ## 本地运行
 
@@ -48,6 +49,13 @@ Copy-Item .env.example .env
 - 支持 `.csv`、`.xlsx`，单文件最大 20 MB；CSV 自动尝试 UTF-8-SIG、UTF-8 与 GBK 编码。
 - 接口返回数据集 ID、行列数、字段类型、缺失值数量和前 20 行预览。原始文件存放在 `storage/uploads/`，不会提交到 Git。
 
+## 数据清洗接口
+
+- 清洗接口：`POST /api/v1/datasets/{dataset_id}/clean`
+- 必须先在 Swagger 的 **Authorize** 中完成登录授权；`dataset_id` 使用上传接口返回的 `data.id`。
+- 清洗不会修改原始上传文件，而是在 `storage/cleaned/` 输出标准化 CSV，并在 `dataset_cleaning_runs` 保存审计记录。
+- 当前规则：销售常见中英文列名映射、全空行删除、重复行删除、日期标准化为 `YYYY-MM-DD`、金额/目标/客户数转为数值，并返回清洗摘要和预览。
+
 示例注册参数：
 
 ```json
@@ -65,6 +73,7 @@ Copy-Item .env.example .env
 ```sql
 SOURCE backend/sql/001_create_users_table.sql;
 SOURCE backend/sql/002_create_dataset_tables.sql;
+SOURCE backend/sql/003_create_dataset_cleaning_runs.sql;
 ```
 
 当前开发环境启动 FastAPI 时也会自动创建已声明的数据表。正式生产环境后续会改为 Alembic 迁移管理。

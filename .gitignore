@@ -20,6 +20,8 @@ htmlcov/
 # Runtime data
 storage/uploads/*
 !storage/uploads/.gitkeep
+storage/cleaned/*
+!storage/cleaned/.gitkeep
 storage/reports/*
 !storage/reports/.gitkeep
 *.log

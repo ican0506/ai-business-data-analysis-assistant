@@ -110,3 +110,34 @@ def test_upload_gbk_csv_uses_encoding_fallback(client: TestClient) -> None:
 
     assert response.status_code == 201
     assert response.json()["data"]["preview"] == [{"区域": "华北", "销售额": 900}]
+
+
+def test_clean_dataset_standardizes_sales_columns_and_removes_invalid_rows(client: TestClient) -> None:
+    csv_content = (
+        "日期,区域,销售额,目标额\n"
+        "2026/07/01,华东,\"1,200\",1500\n"
+        "2026/07/01,华东,\"1,200\",1500\n"
+        ",,,\n"
+        "2026-07-02,华南,800,1000\n"
+    )
+    headers = auth_headers(client)
+    upload_response = client.post(
+        "/api/v1/datasets/upload",
+        headers=headers,
+        files={"file": ("sales.csv", BytesIO(csv_content.encode("utf-8")), "text/csv")},
+    )
+
+    response = client.post(
+        f"/api/v1/datasets/{upload_response.json()['data']['id']}/clean",
+        headers=headers,
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["code"] == 0
+    assert body["data"]["original_row_count"] == 4
+    assert body["data"]["cleaned_row_count"] == 2
+    assert body["data"]["removed_empty_rows"] == 1
+    assert body["data"]["removed_duplicate_rows"] == 1
+    assert body["data"]["columns"] == ["date", "region", "sales_amount", "target_amount"]
+    assert body["data"]["preview"][0]["sales_amount"] == 1200

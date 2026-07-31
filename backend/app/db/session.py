@@ -3,6 +3,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.config import get_settings
 from app.models.dataset import Dataset, DatasetColumn  # noqa: F401
+from app.models.dataset_cleaning import DatasetCleaningRun  # noqa: F401
 from app.models.user import Base
 
 

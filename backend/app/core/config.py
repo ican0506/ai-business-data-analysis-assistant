@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     mysql_password: str = ""
 
     storage_root: str = "../storage"
-    frontend_index_path: str = "../../frontend/index.html"
+    frontend_index_path: str = "../frontend/index.html"
 
     model_config = SettingsConfigDict(
         env_file=Path(__file__).resolve().parents[2] / ".env",

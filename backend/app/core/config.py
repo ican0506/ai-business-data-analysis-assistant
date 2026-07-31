@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     mysql_password: str = ""
 
     storage_root: str = "../storage"
+    upload_max_file_size_mb: int = 20
     frontend_index_path: str = "../frontend/index.html"
     jwt_secret_key: str = "development-only-change-me-32-byte-secret"
     jwt_algorithm: str = "HS256"
@@ -45,6 +46,10 @@ class Settings(BaseSettings):
     @property
     def resolved_frontend_index_path(self) -> Path:
         return (Path(__file__).resolve().parents[2] / self.frontend_index_path).resolve()
+
+    @property
+    def resolved_storage_root(self) -> Path:
+        return (Path(__file__).resolve().parents[2] / self.storage_root).resolve()
 
 
 @lru_cache

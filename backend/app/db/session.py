@@ -2,11 +2,24 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import get_settings
+from app.models.user import Base
 
 
 settings = get_settings()
 engine = create_engine(settings.database_url, pool_pre_ping=True, pool_recycle=3600)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def create_database_tables() -> None:
+    Base.metadata.create_all(bind=engine)
 
 
 def is_database_available() -> bool:

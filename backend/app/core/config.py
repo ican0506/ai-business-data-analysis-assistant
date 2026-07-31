@@ -21,6 +21,9 @@ class Settings(BaseSettings):
 
     storage_root: str = "../storage"
     frontend_index_path: str = "../frontend/index.html"
+    jwt_secret_key: str = "development-only-change-me-32-byte-secret"
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 120
 
     model_config = SettingsConfigDict(
         env_file=Path(__file__).resolve().parents[2] / ".env",

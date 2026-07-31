@@ -56,6 +56,11 @@ Copy-Item .env.example .env
 - 清洗不会修改原始上传文件，而是在 `storage/cleaned/` 输出标准化 CSV，并在 `dataset_cleaning_runs` 保存审计记录。
 - 当前规则：销售常见中英文列名映射、全空行删除、重复行删除、日期标准化为 `YYYY-MM-DD`、金额/目标/客户数转为数值，并返回清洗摘要和预览。
 
+## 统计分析接口
+
+- 分析接口：`GET /api/v1/datasets/{dataset_id}/metrics`
+- 基于最新一次清洗结果，返回总行数、销售额总计/均值/最大/最小值、首末日期销售额增长率、整体完成率和区域销售额 TOP 10。
+
 示例注册参数：
 
 ```json

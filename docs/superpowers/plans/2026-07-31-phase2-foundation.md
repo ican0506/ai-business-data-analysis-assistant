@@ -14,6 +14,7 @@
 
 - 创建：`backend/requirements.txt` — 后端运行与测试依赖。
 - 创建：`backend/.env.example` — 不含密钥的 MySQL、JWT、文件上传和 LLM 配置模板。
+- 创建：`backend/.venv/` — 本地 Python 依赖隔离目录，已由 `.gitignore` 忽略。
 - 创建：`backend/app/core/config.py` — `Settings` 与配置缓存。
 - 创建：`backend/app/core/logging.py` — 应用日志初始化。
 - 创建：`backend/app/db/session.py` — SQLAlchemy 引擎与会话工厂。
@@ -34,7 +35,13 @@
 - 创建：`backend/app/core/config.py`
 - 测试：`backend/tests/test_config.py`
 
-- [ ] **步骤 1：编写失败测试**
+- [ ] **步骤 1：创建虚拟环境并安装测试依赖**
+
+运行：`cd backend; python -m venv .venv; .\.venv\Scripts\python -m pip install -r requirements.txt`
+
+预期：`.venv` 创建成功，`fastapi`、`pytest`、`pydantic-settings`、`sqlalchemy`、`pymysql` 和 `httpx` 可被该解释器导入。
+
+- [ ] **步骤 2：编写失败测试**
 
 ```python
 from app.core.config import Settings
@@ -52,13 +59,13 @@ def test_settings_builds_mysql_url_from_environment(monkeypatch):
     assert settings.database_url == "mysql+pymysql://analysis_user:safe-password@mysql.example:3307/analysis_db"
 ```
 
-- [ ] **步骤 2：运行测试确认失败**
+- [ ] **步骤 3：运行测试确认失败**
 
 运行：`cd backend; python -m pytest tests/test_config.py -q`
 
 预期：失败，提示 `ModuleNotFoundError: No module named 'app'` 或 `config` 模块不存在。
 
-- [ ] **步骤 3：最小实现配置**
+- [ ] **步骤 4：最小实现配置**
 
 ```python
 class Settings(BaseSettings):
@@ -73,13 +80,13 @@ class Settings(BaseSettings):
         return f"mysql+pymysql://{self.mysql_user}:{self.mysql_password}@{self.mysql_host}:{self.mysql_port}/{self.mysql_database}"
 ```
 
-- [ ] **步骤 4：运行测试确认通过**
+- [ ] **步骤 5：运行测试确认通过**
 
 运行：`cd backend; python -m pytest tests/test_config.py -q`
 
 预期：`1 passed`。
 
-- [ ] **步骤 5：提交**
+- [ ] **步骤 6：提交**
 
 ```powershell
 git add backend/requirements.txt backend/.env.example backend/app/core/config.py backend/tests/test_config.py

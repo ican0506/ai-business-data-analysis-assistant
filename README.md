@@ -67,6 +67,13 @@ Copy-Item .env.example .env
 - 当前默认 `rule_based` 模式：基于真实统计指标输出数据摘要、异常发现、业务问题和优化建议，适合无 API Key 的本地演示。
 - 后续配置真实 LLM Provider 时，接口返回结构保持不变；真实密钥仅放在 `.env`，不得提交到 Git。
 
+## 报告导出接口
+
+- Excel 报告：`GET /api/v1/datasets/{dataset_id}/reports/excel`
+- Word 报告：`GET /api/v1/datasets/{dataset_id}/reports/word`
+- PDF 报告：`GET /api/v1/datasets/{dataset_id}/reports/pdf`
+- 三个接口均需要 JWT 授权，且仅数据集创建者可以导出。报告包含数据概览、区域销售额图表、AI 分析结果和优化建议；原始上传文件及导出文件均不会提交到 Git。
+
 示例注册参数：
 
 ```json

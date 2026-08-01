@@ -1,9 +1,11 @@
 from collections.abc import Generator
 from io import BytesIO
+from zipfile import ZipFile
 
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
+from openpyxl import load_workbook
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -188,3 +190,34 @@ def test_generate_business_analysis_returns_structured_fallback_report(client: T
     assert data["summary"]
     assert data["anomalies"]
     assert data["recommendations"]
+
+
+def test_export_excel_report_returns_workbook(client: TestClient) -> None:
+    csv_content = "date,region,sales_amount,target_amount\n2026-07-01,east,800,1000\n"
+    headers = auth_headers(client)
+    upload = client.post("/api/v1/datasets/upload", headers=headers, files={"file": ("sales.csv", BytesIO(csv_content.encode()), "text/csv")})
+    dataset_id = upload.json()["data"]["id"]
+    client.post(f"/api/v1/datasets/{dataset_id}/clean", headers=headers)
+
+    response = client.get(f"/api/v1/datasets/{dataset_id}/reports/excel", headers=headers)
+
+    assert response.status_code == 200
+    assert "attachment" in response.headers["content-disposition"]
+    assert response.headers["content-type"].startswith("application/vnd.openxmlformats-officedocument")
+    workbook = load_workbook(BytesIO(response.content))
+    assert workbook.active._charts
+
+
+@pytest.mark.parametrize(("report_type", "content_type"), [("word", "application/vnd.openxmlformats-officedocument"), ("pdf", "application/pdf")])
+def test_export_word_and_pdf_reports(client: TestClient, report_type: str, content_type: str) -> None:
+    csv_content = "date,region,sales_amount,target_amount\n2026-07-01,east,800,1000\n"
+    headers = auth_headers(client)
+    upload = client.post("/api/v1/datasets/upload", headers=headers, files={"file": ("sales.csv", BytesIO(csv_content.encode()), "text/csv")})
+    dataset_id = upload.json()["data"]["id"]
+    client.post(f"/api/v1/datasets/{dataset_id}/clean", headers=headers)
+    response = client.get(f"/api/v1/datasets/{dataset_id}/reports/{report_type}", headers=headers)
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith(content_type)
+    if report_type == "word":
+        with ZipFile(BytesIO(response.content)) as document:
+            assert any(name.startswith("word/media/") for name in document.namelist())

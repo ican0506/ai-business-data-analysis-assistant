@@ -1,4 +1,7 @@
+from io import BytesIO
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.api.v1.auth import get_current_user
@@ -9,6 +12,7 @@ from app.services.data_cleaning_service import DataCleaningService
 from app.services.dataset_service import DatasetService
 from app.services.metrics_service import MetricsService
 from app.services.ai_analysis_service import AIAnalysisService
+from app.services.report_service import ReportService
 
 
 router = APIRouter(prefix="/api/v1/datasets", tags=["数据集"])
@@ -16,6 +20,7 @@ service = DatasetService()
 cleaning_service = DataCleaningService()
 metrics_service = MetricsService()
 ai_analysis_service = AIAnalysisService()
+report_service = ReportService()
 
 
 @router.post("/upload", status_code=status.HTTP_201_CREATED)
@@ -80,3 +85,33 @@ def generate_ai_analysis(dataset_id: int, current_user: User = Depends(get_curre
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
     return {"code": 0, "message": "业务分析报告生成成功", "data": data}
+
+
+@router.get("/{dataset_id}/reports/excel")
+def export_excel_report(dataset_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    dataset = db.get(Dataset, dataset_id)
+    if dataset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="数据集不存在")
+    if dataset.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权导出此数据集")
+    try:
+        content = report_service.build_excel(db, dataset)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    return StreamingResponse(BytesIO(content), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": f'attachment; filename="dataset-{dataset_id}-report.xlsx"'})
+
+
+@router.get("/{dataset_id}/reports/{report_type}")
+def export_report(report_type: str, dataset_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if report_type not in {"word", "pdf"}:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="报告类型不存在")
+    dataset = db.get(Dataset, dataset_id)
+    if dataset is None or dataset.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="数据集不存在")
+    try:
+        content = report_service.build_word(db, dataset) if report_type == "word" else report_service.build_pdf(db, dataset)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document" if report_type == "word" else "application/pdf"
+    extension = "docx" if report_type == "word" else "pdf"
+    return StreamingResponse(BytesIO(content), media_type=media_type, headers={"Content-Disposition": f'attachment; filename="dataset-{dataset_id}-report.{extension}"'})

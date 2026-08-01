@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     jwt_secret_key: str = "development-only-change-me-32-byte-secret"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 120
+    llm_provider: str = "deepseek"
+    llm_api_key: str = ""
+    llm_base_url: str = "https://api.deepseek.com"
+    llm_model: str = "deepseek-chat"
 
     model_config = SettingsConfigDict(
         env_file=Path(__file__).resolve().parents[2] / ".env",

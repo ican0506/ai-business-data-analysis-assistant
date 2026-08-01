@@ -168,3 +168,23 @@ def test_get_dataset_metrics_returns_sales_summary_and_region_ranking(client: Te
     assert data["sales_amount"]["maximum"] == 1800
     assert data["completion_rate"] == 84.44
     assert data["top_regions"][0] == {"name": "east", "value": 3000}
+
+
+def test_generate_business_analysis_returns_structured_fallback_report(client: TestClient) -> None:
+    csv_content = "date,region,sales_amount,target_amount\n2026-07-01,east,800,1000\n2026-07-02,south,400,1000\n"
+    headers = auth_headers(client)
+    upload = client.post(
+        "/api/v1/datasets/upload", headers=headers,
+        files={"file": ("sales.csv", BytesIO(csv_content.encode("utf-8")), "text/csv")},
+    )
+    dataset_id = upload.json()["data"]["id"]
+    client.post(f"/api/v1/datasets/{dataset_id}/clean", headers=headers)
+
+    response = client.post(f"/api/v1/datasets/{dataset_id}/ai-analysis", headers=headers)
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["mode"] == "rule_based"
+    assert data["summary"]
+    assert data["anomalies"]
+    assert data["recommendations"]

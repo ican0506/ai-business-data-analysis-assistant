@@ -61,6 +61,12 @@ Copy-Item .env.example .env
 - 分析接口：`GET /api/v1/datasets/{dataset_id}/metrics`
 - 基于最新一次清洗结果，返回总行数、销售额总计/均值/最大/最小值、首末日期销售额增长率、整体完成率和区域销售额 TOP 10。
 
+## AI 业务分析接口
+
+- 报告接口：`POST /api/v1/datasets/{dataset_id}/ai-analysis`
+- 当前默认 `rule_based` 模式：基于真实统计指标输出数据摘要、异常发现、业务问题和优化建议，适合无 API Key 的本地演示。
+- 后续配置真实 LLM Provider 时，接口返回结构保持不变；真实密钥仅放在 `.env`，不得提交到 Git。
+
 示例注册参数：
 
 ```json

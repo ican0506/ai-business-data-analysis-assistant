@@ -8,12 +8,14 @@ from app.models.user import User
 from app.services.data_cleaning_service import DataCleaningService
 from app.services.dataset_service import DatasetService
 from app.services.metrics_service import MetricsService
+from app.services.ai_analysis_service import AIAnalysisService
 
 
 router = APIRouter(prefix="/api/v1/datasets", tags=["数据集"])
 service = DatasetService()
 cleaning_service = DataCleaningService()
 metrics_service = MetricsService()
+ai_analysis_service = AIAnalysisService()
 
 
 @router.post("/upload", status_code=status.HTTP_201_CREATED)
@@ -64,3 +66,17 @@ def get_dataset_metrics(dataset_id: int, current_user: User = Depends(get_curren
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
     return {"code": 0, "message": "统计分析成功", "data": data}
+
+
+@router.post("/{dataset_id}/ai-analysis")
+def generate_ai_analysis(dataset_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    dataset = db.get(Dataset, dataset_id)
+    if dataset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="数据集不存在")
+    if dataset.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权分析此数据集")
+    try:
+        data = ai_analysis_service.generate_report(db, dataset)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    return {"code": 0, "message": "业务分析报告生成成功", "data": data}

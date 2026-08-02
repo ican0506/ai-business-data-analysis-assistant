@@ -1,0 +1,12 @@
+.git
+.worktrees
+.env
+**/.env
+**/node_modules
+**/dist
+**/__pycache__
+**/.pytest_cache
+storage/uploads
+storage/cleaned
+storage/reports
+*.log

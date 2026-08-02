@@ -1,0 +1,30 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+
+vi.mock('../api/auth', () => ({
+  loginRequest: vi.fn(),
+  getCurrentUser: vi.fn(),
+}))
+
+import { getCurrentUser, loginRequest } from '../api/auth'
+import { TOKEN_STORAGE_KEY, useAuthStore } from './auth'
+
+describe('认证状态', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  it('登录成功后保存 JWT 和用户信息', async () => {
+    loginRequest.mockResolvedValue({ access_token: 'demo-jwt-token', token_type: 'bearer' })
+    getCurrentUser.mockResolvedValue({ username: 'student_demo', role: 'USER' })
+
+    const auth = useAuthStore()
+    await auth.login({ username: 'student_demo', password: 'DemoPass123' })
+
+    expect(localStorage.getItem(TOKEN_STORAGE_KEY)).toBe('demo-jwt-token')
+    expect(auth.user).toEqual({ username: 'student_demo', role: 'USER' })
+    expect(auth.isAuthenticated).toBe(true)
+  })
+})

@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.v1.health import router as health_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.datasets import router as datasets_router
+from app.api.v1.audit_logs import router as audit_logs_router
 from app.core.config import get_settings
 from app.db.session import create_database_tables
 
@@ -32,6 +33,7 @@ def create_app(create_tables: bool = True) -> FastAPI:
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(datasets_router)
+    app.include_router(audit_logs_router)
     app.mount("/static", StaticFiles(directory=settings.resolved_frontend_index_path.parent / "assets"), name="static")
 
     @app.get("/", include_in_schema=False)

@@ -1,6 +1,7 @@
 import axios from 'axios'
 
 import { TOKEN_STORAGE_KEY } from '../stores/auth'
+import { beginRequest, endRequest } from '../utils/requestState'
 
 const http = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '',
@@ -8,6 +9,7 @@ const http = axios.create({
 })
 
 http.interceptors.request.use((config) => {
+  beginRequest()
   const token = localStorage.getItem(TOKEN_STORAGE_KEY)
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
@@ -16,9 +18,16 @@ http.interceptors.request.use((config) => {
 })
 
 http.interceptors.response.use(
-  (response) => response.data,
+  (response) => { endRequest(); return response.data },
   (error) => {
+    endRequest()
+    if (error.response?.status === 401) {
+      localStorage.removeItem(TOKEN_STORAGE_KEY)
+      localStorage.removeItem('ai_insight_user')
+      if (window.location.pathname !== '/login') window.location.assign('/login')
+    }
     const message = error.response?.data?.detail || error.response?.data?.message || '网络请求失败，请稍后重试'
+    window.dispatchEvent(new CustomEvent('app-error', { detail: message }))
     return Promise.reject(new Error(message))
   },
 )

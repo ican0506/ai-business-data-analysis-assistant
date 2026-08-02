@@ -1,8 +1,11 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 
 import { useAuthStore } from './stores/auth'
+import Loading from './components/common/Loading.vue'
+import { isRequesting } from './utils/requestState'
 
 const route = useRoute()
 const router = useRouter()
@@ -21,9 +24,14 @@ function logout() {
   auth.logout()
   router.replace({ name: 'login' })
 }
+
+function showGlobalError(event) { ElMessage.error(event.detail || '请求失败，请稍后重试。') }
+onMounted(() => window.addEventListener('app-error', showGlobalError))
+onBeforeUnmount(() => window.removeEventListener('app-error', showGlobalError))
 </script>
 
 <template>
+  <Loading v-if="isRequesting" fullscreen text="正在处理数据请求…" />
   <RouterView v-if="isPublicPage" />
 
   <el-container v-else class="app-shell">

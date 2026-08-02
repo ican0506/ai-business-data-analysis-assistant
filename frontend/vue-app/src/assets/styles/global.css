@@ -101,6 +101,67 @@ button:disabled { cursor: wait; opacity: 0.65; }
 .dataset-history-table { width: 100%; }
 .dataset-history-table .el-table__header th { color: #627d98; font-weight: 700; }
 .detail-heading { margin: 24px 0 12px; color: #243b53; }
+.ai-analysis-view { display: grid; gap: 22px; }
+.analysis-intro { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.analysis-intro h2 { margin: 8px 0; font-size: 28px; }
+.analysis-intro p:not(.view-eyebrow) { margin: 0; color: #627d98; }
+.dataset-context-card, .report-panel { border-color: #e4ebf5; }
+.dataset-context-card .el-card__header { padding: 16px 20px; }
+.context-header { display: flex; align-items: center; justify-content: space-between; }
+.dataset-context-card .el-descriptions__label { color: #627d98; font-weight: 700; }
+.analysis-loading { display: grid; gap: 18px; padding: 24px; border: 1px solid #dbeafe; border-radius: 14px; background: #fff; }
+.loading-copy { display: flex; align-items: center; gap: 8px; color: #2f80ed; font-size: 14px; font-weight: 700; }
+.analysis-error { display: grid; gap: 14px; align-items: start; }
+.analysis-meta { display: flex; align-items: center; justify-content: space-between; color: #627d98; font-size: 13px; }
+.report-grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: 18px; }
+.report-panel .el-card__header { padding: 18px 20px; border-bottom-color: #edf2f7; }
+.report-panel .el-card__body { padding: 20px; }
+.report-panel-title { display: flex; align-items: center; gap: 11px; }
+.report-panel-title > span { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 9px; background: #eff6ff; color: #2563eb; font-size: 12px; font-weight: 800; }
+.report-panel-title strong, .report-panel-title small { display: block; }
+.report-panel-title strong { color: #102a43; font-size: 15px; }
+.report-panel-title small { margin-top: 3px; color: #829ab1; font-size: 11px; }
+.summary-text { margin: 0; color: #243b53; line-height: 1.8; }
+.metric-chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.metric-chips span { padding: 8px 10px; border-radius: 8px; background: #f4f7fb; color: #627d98; font-size: 12px; }
+.metric-chips b { margin-left: 4px; color: #102a43; }
+.report-list { display: grid; gap: 10px; }
+.report-list-item { display: flex; gap: 9px; padding: 11px 12px; border-radius: 8px; line-height: 1.6; font-size: 13px; }
+.report-list-item.warning { background: #fff7ed; color: #9a3412; }
+.report-list-item .el-icon { flex: 0 0 auto; margin-top: 3px; }
+.insight-list { display: grid; gap: 8px; margin: 0; padding-left: 18px; color: #486581; font-size: 13px; line-height: 1.6; }
+.suggestion-panel { grid-column: span 2; }
+.recommendation-list { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.recommendation-list li { display: flex; align-items: flex-start; gap: 12px; padding: 12px; border: 1px solid #e4ebf5; border-radius: 9px; color: #486581; font-size: 13px; line-height: 1.6; }
+.recommendation-list b { color: #2f80ed; font-size: 12px; }
+.common-loading { display: inline-flex; align-items: center; gap: 9px; color: #2f80ed; font-size: 14px; font-weight: 700; }
+.common-loading.fullscreen { position: fixed; z-index: 3000; inset: 0; display: grid; place-content: center; background: rgba(244,247,251,.78); backdrop-filter: blur(2px); }
+.common-empty { min-height: 210px; }
+.common-page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.common-page-header h2 { margin: 8px 0; color: #102a43; font-size: 28px; }
+.common-page-header p:not(.view-eyebrow) { margin: 0; color: #627d98; }
+.not-found-view { display: grid; min-height: 70vh; place-items: center; }
+.download-center-view { display: grid; gap: 22px; }
+.download-intro, .section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.download-intro h2 { margin: 8px 0; font-size: 28px; }
+.download-intro p:not(.view-eyebrow), .section-heading span { margin: 0; color: #627d98; }
+.section-heading strong, .section-heading span { display: block; }
+.section-heading strong { color: #102a43; font-size: 16px; }
+.section-heading span { margin-top: 5px; font-size: 12px; }
+.report-card-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 14px; }
+.download-report-card { border-color: #e4ebf5; }
+.download-report-card .el-card__body { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center; }
+.download-report-card .el-button { grid-column: 1 / -1; }
+.file-icon { display: grid; width: 44px; height: 52px; place-items: center; border-radius: 9px; color: #fff; font-size: 16px; font-weight: 800; }
+.file-icon.excel { background: #208a56; }
+.file-icon.word { background: #2b6cb0; }
+.file-icon.pdf { background: #c53030; }
+.report-card-copy { display: grid; gap: 7px; min-width: 0; }
+.report-card-copy strong { overflow: hidden; color: #243b53; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.report-card-copy span { color: #829ab1; font-size: 12px; line-height: 1.5; }
+.report-history-card { border-color: #e4ebf5; }
+.report-history-card .el-card__header { padding: 18px 20px; }
+.report-history-table .el-table__header th { color: #627d98; font-weight: 700; }
 @media (max-width: 1180px) { .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .trend-panel { grid-column: span 2; } }
 @media (max-width: 760px) {
   .app-sidebar { width: 76px !important; padding: 18px 8px; }
@@ -115,11 +176,18 @@ button:disabled { cursor: wait; opacity: 0.65; }
   .content-view { min-height: calc(100vh - 108px); padding: 24px 18px; }
   .dashboard-intro { gap: 12px; flex-direction: column; }
   .dataset-intro { gap: 12px; flex-direction: column; }
+  .analysis-intro { gap: 12px; flex-direction: column; }
+  .download-intro { gap: 12px; flex-direction: column; }
+  .common-page-header { gap: 12px; flex-direction: column; }
   .dataset-intro h2 { font-size: 24px; }
   .dataset-upload-card .el-card__body { grid-template-columns: 1fr; }
   .upload-actions { flex-wrap: wrap; }
   .dashboard-intro h2 { font-size: 24px; }
   .kpi-grid, .dashboard-grid { grid-template-columns: 1fr; }
+  .report-grid { grid-template-columns: 1fr; }
+  .report-card-grid { grid-template-columns: 1fr; }
+  .suggestion-panel { grid-column: auto; }
+  .analysis-meta { align-items: flex-start; gap: 8px; flex-direction: column; }
   .trend-panel { grid-column: auto; }
   .chart-canvas { height: 240px; }
   .recent-panel { overflow: hidden; }

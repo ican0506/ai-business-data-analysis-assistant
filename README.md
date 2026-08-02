@@ -1,127 +1,107 @@
 # AI 智能数据分析助手
 
-面向企业销售运营场景的数据分析系统。当前已完成基础工程和认证模块，后续会继续开发文件上传、数据清洗、指标分析、ECharts 可视化、AI 分析报告和导出功能。
+面向企业销售运营场景的全栈数据分析平台。用户上传 Excel/CSV 后，可完成数据解析、清洗、指标分析、可视化、AI 业务洞察与多格式报告导出。
 
-## 技术栈
+## 项目价值
 
-- 后端：Python、FastAPI、SQLAlchemy、MySQL
-- 前端：HTML、CSS、JavaScript、ECharts
-- 数据处理：Pandas、NumPy、OpenPyXL
-- AI：大语言模型 API、Prompt Engineering
-- 部署：Git、Docker、Linux
+企业运营数据常分散在表格中，人工清洗和复盘成本高。本项目提供从上传到报告的闭环，帮助运营/销售人员快速识别完成率风险、区域差异和增长趋势，并形成可执行建议。
 
-## 已实现功能
+## 核心功能
 
-- FastAPI 应用入口和 Swagger 文档
-- MySQL 连接配置和健康检查
-- Docker Compose 启动后端和 MySQL
-- 用户注册、登录、JWT 认证
-- 当前登录用户查询：`GET /api/v1/auth/me`
-- 用户表 SQL 初始化脚本：`backend/sql/001_create_users_table.sql`
-- 数据集与字段元信息 SQL 补丁：`backend/sql/002_create_dataset_tables.sql`
-- 数据清洗记录 SQL 补丁：`backend/sql/003_create_dataset_cleaning_runs.sql`
+- JWT 注册、登录、路由鉴权与 Token 失效处理
+- Excel/CSV 上传、字段预览与本机数据集展示记录
+- 空行/重复行清理、日期/金额标准化与清洗审计
+- 总量、均值、极值、增长率、完成率、区域 TOP 指标
+- Vue3 + ECharts 数据驾驶舱
+- DeepSeek / 规则引擎 AI 分析：摘要、异常、风险、建议
+- Excel、Word、PDF 实时报告导出
+- 操作审计日志、Docker Compose 部署与 Swagger 文档
 
-## 本地运行
+## 技术架构
+
+| 层级 | 技术 |
+| --- | --- |
+| Frontend | Vue3、Vite、Pinia、Vue Router、Axios、Element Plus、ECharts |
+| Backend | Python、FastAPI、SQLAlchemy、Pandas、NumPy、OpenPyXL |
+| Database | MySQL 8 |
+| AI | DeepSeek API（兼容 OpenAI SDK）+ Prompt Engineering + 规则降级 |
+| Deployment | Docker、Docker Compose、Linux |
+
+```mermaid
+flowchart TD
+  U[企业用户] --> F[Vue3 前端]
+  F --> A[FastAPI 接口层]
+  A --> S[业务服务层\n上传 清洗 指标 报告]
+  S --> M[(MySQL)]
+  S --> L[AI 分析服务\nDeepSeek / 规则引擎]
+  L --> A
+```
+
+详细说明见 [架构文档](docs/architecture.md)。
+
+## 页面截图
+
+> 将实际截图放入 `docs/images/` 后替换下列占位路径；请勿提交含业务敏感数据的截图。
+
+| 登录页 | 数据驾驶舱 |
+| --- | --- |
+| `docs/images/login.png` | `docs/images/dashboard.png` |
+| 数据集管理 | AI 分析报告 |
+| `docs/images/datasets.png` | `docs/images/ai-analysis.png` |
+| 报告下载中心 |  |
+| `docs/images/download-center.png` |  |
+
+## 快速启动
+
+### Docker（推荐）
 
 ```powershell
-cd D:\开发\python项目\AI智能数据分析助手\backend
+cd "D:\开发\python项目\AI智能数据分析助手"
+Copy-Item .env.example .env
+# 编辑 .env：至少设置 MYSQL_ROOT_PASSWORD；可选配置 DeepSeek
+docker compose up --build
+```
+
+打开 <http://127.0.0.1:8000/docs>。停止服务：`docker compose down`。
+
+### 本地开发
+
+后端：
+
+```powershell
+cd backend
 Copy-Item .env.example .env
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
 
-打开：
-
-- 前端入口：<http://127.0.0.1:8000/>
-- Swagger：<http://127.0.0.1:8000/docs>
-- 健康检查：<http://127.0.0.1:8000/api/v1/health>
-
-## 认证接口
-
-- 注册：`POST /api/v1/auth/register`
-- 登录：`POST /api/v1/auth/login`
-- 当前用户：`GET /api/v1/auth/me`
-
-## 数据集上传接口
-
-- 上传并解析：`POST /api/v1/datasets/upload`
-- 必须先在 Swagger 的 **Authorize** 中完成登录授权。
-- 支持 `.csv`、`.xlsx`，单文件最大 20 MB；CSV 自动尝试 UTF-8-SIG、UTF-8 与 GBK 编码。
-- 接口返回数据集 ID、行列数、字段类型、缺失值数量和前 20 行预览。原始文件存放在 `storage/uploads/`，不会提交到 Git。
-
-## 数据清洗接口
-
-- 清洗接口：`POST /api/v1/datasets/{dataset_id}/clean`
-- 必须先在 Swagger 的 **Authorize** 中完成登录授权；`dataset_id` 使用上传接口返回的 `data.id`。
-- 清洗不会修改原始上传文件，而是在 `storage/cleaned/` 输出标准化 CSV，并在 `dataset_cleaning_runs` 保存审计记录。
-- 当前规则：销售常见中英文列名映射、全空行删除、重复行删除、日期标准化为 `YYYY-MM-DD`、金额/目标/客户数转为数值，并返回清洗摘要和预览。
-
-## 统计分析接口
-
-- 分析接口：`GET /api/v1/datasets/{dataset_id}/metrics`
-- 基于最新一次清洗结果，返回总行数、销售额总计/均值/最大/最小值、首末日期销售额增长率、整体完成率和区域销售额 TOP 10。
-
-## AI 业务分析接口
-
-- 报告接口：`POST /api/v1/datasets/{dataset_id}/ai-analysis`
-- 当前默认 `rule_based` 模式：基于真实统计指标输出数据摘要、异常发现、业务问题和优化建议，适合无 API Key 的本地演示。
-- 后续配置真实 LLM Provider 时，接口返回结构保持不变；真实密钥仅放在 `.env`，不得提交到 Git。
-
-## 报告导出接口
-
-- Excel 报告：`GET /api/v1/datasets/{dataset_id}/reports/excel`
-- Word 报告：`GET /api/v1/datasets/{dataset_id}/reports/word`
-- PDF 报告：`GET /api/v1/datasets/{dataset_id}/reports/pdf`
-- 三个接口均需要 JWT 授权，且仅数据集创建者可以导出。报告包含数据概览、区域销售额图表、AI 分析结果和优化建议；原始上传文件及导出文件均不会提交到 Git。
-
-示例注册参数：
-
-```json
-{
-  "username": "sales_user",
-  "email": "sales@example.com",
-  "password": "Password123"
-}
-```
-
-## 数据库
-
-新数据库可以执行：
-
-```sql
-SOURCE backend/sql/001_create_users_table.sql;
-SOURCE backend/sql/002_create_dataset_tables.sql;
-SOURCE backend/sql/003_create_dataset_cleaning_runs.sql;
-```
-
-当前开发环境启动 FastAPI 时也会自动创建已声明的数据表。正式生产环境后续会改为 Alembic 迁移管理。
-
-## 测试
+Vue 前端：
 
 ```powershell
-cd D:\开发\python项目\AI智能数据分析助手\backend
-.\.venv\Scripts\python.exe -m pytest -q
+cd frontend\vue-app
+npm install
+npm run dev
 ```
 
-## Docker 运行
+前端默认通过 Vite 配置将 `/api` 代理到 FastAPI。更多见 [部署文档](docs/deployment.md)。
 
-先在项目根目录复制配置：
+## 常用接口
+
+- `POST /api/v1/auth/register`、`POST /api/v1/auth/login`
+- `POST /api/v1/datasets/upload`
+- `POST /api/v1/datasets/{id}/clean`
+- `GET /api/v1/datasets/{id}/metrics`
+- `POST /api/v1/datasets/{id}/ai-analysis`
+- `GET /api/v1/datasets/{id}/reports/{excel|word|pdf}`
+
+完整接口清单见 [API 文档](docs/api.md)，数据库说明见 [database.md](docs/database.md)。
+
+## 测试与安全
 
 ```powershell
-cd D:\开发\python项目\AI智能数据分析助手
-Copy-Item .env.example .env
+cd frontend\vue-app
+npm test
+npm run build
 ```
 
-然后启动：
-
-```powershell
-docker compose up --build
-```
-
-停止容器：
-
-```powershell
-docker compose down
-```
-
-不要提交 `.env`、`backend/.env`、上传文件、导出报告、日志文件或真实 LLM 密钥。
+不要提交 `.env`、上传/导出文件、日志、`node_modules` 或任何 API Key。项目展示与面试材料见 [interview.md](docs/interview.md)。

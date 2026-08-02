@@ -13,6 +13,7 @@ from app.services.dataset_service import DatasetService
 from app.services.metrics_service import MetricsService
 from app.services.ai_analysis_service import AIAnalysisService
 from app.services.report_service import ReportService
+from app.services.operation_log_service import OperationLogService
 
 
 router = APIRouter(prefix="/api/v1/datasets", tags=["数据集"])
@@ -21,6 +22,7 @@ cleaning_service = DataCleaningService()
 metrics_service = MetricsService()
 ai_analysis_service = AIAnalysisService()
 report_service = ReportService()
+operation_log_service = OperationLogService()
 
 
 @router.post("/upload", status_code=status.HTTP_201_CREATED)
@@ -35,6 +37,7 @@ async def upload_dataset(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
     except Exception as error:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="文件解析失败，请检查文件内容") from error
+    operation_log_service.record(db, current_user.id, "DATASET_UPLOAD", "dataset", data["id"], data["original_filename"])
     return {"code": 0, "message": "上传并解析成功", "data": data}
 
 
@@ -56,6 +59,7 @@ def clean_dataset(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
     except Exception as error:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="数据清洗失败，请检查文件内容") from error
+    operation_log_service.record(db, current_user.id, "DATASET_CLEAN", "dataset", dataset_id)
     return {"code": 0, "message": "数据清洗成功", "data": data}
 
 
@@ -70,6 +74,7 @@ def get_dataset_metrics(dataset_id: int, current_user: User = Depends(get_curren
         data = metrics_service.build_metrics(db, dataset)
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    operation_log_service.record(db, current_user.id, "DATASET_METRICS_VIEW", "dataset", dataset_id)
     return {"code": 0, "message": "统计分析成功", "data": data}
 
 
@@ -84,6 +89,7 @@ def generate_ai_analysis(dataset_id: int, current_user: User = Depends(get_curre
         data = ai_analysis_service.generate_report(db, dataset)
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    operation_log_service.record(db, current_user.id, "DATASET_AI_ANALYSIS", "dataset", dataset_id)
     return {"code": 0, "message": "业务分析报告生成成功", "data": data}
 
 
@@ -98,6 +104,7 @@ def export_excel_report(dataset_id: int, current_user: User = Depends(get_curren
         content = report_service.build_excel(db, dataset)
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    operation_log_service.record(db, current_user.id, "REPORT_EXPORT_EXCEL", "dataset", dataset_id)
     return StreamingResponse(BytesIO(content), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": f'attachment; filename="dataset-{dataset_id}-report.xlsx"'})
 
 
@@ -114,4 +121,5 @@ def export_report(report_type: str, dataset_id: int, current_user: User = Depend
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
     media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document" if report_type == "word" else "application/pdf"
     extension = "docx" if report_type == "word" else "pdf"
+    operation_log_service.record(db, current_user.id, f"REPORT_EXPORT_{report_type.upper()}", "dataset", dataset_id)
     return StreamingResponse(BytesIO(content), media_type=media_type, headers={"Content-Disposition": f'attachment; filename="dataset-{dataset_id}-report.{extension}"'})

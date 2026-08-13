@@ -111,6 +111,12 @@ ORDER_ANALYSIS_CAPABILITIES: tuple[AnalysisCapability, ...] = (
         any_of=(("sales_amount",), ("unit_price", "quantity")),
     ),
     AnalysisCapability(
+        id="target_completion",
+        name="目标完成率分析",
+        all_of=("target_amount",),
+        any_of=(("sales_amount",), ("unit_price", "quantity")),
+    ),
+    AnalysisCapability(
         id="customer_analysis",
         name="客户分析",
         all_of=("customer_id",),

@@ -25,6 +25,7 @@ def test_full_order_fields_support_all_capabilities() -> None:
             "quantity": [2],
             "sales_amount": [12000],
             "unit_price": [6000],
+            "target_amount": [13000],
             "region": ["East"],
             "date": ["2026-08-01"],
             "customer_id": ["C-001"],
@@ -126,3 +127,21 @@ def test_empty_dataframe_has_no_available_fields_and_does_not_raise() -> None:
 
     assert available_fields == set()
     assert all(result["supported"] is False for result in results.values())
+
+
+def test_target_completion_requires_target_and_a_sales_solution() -> None:
+    planner = AnalysisPlanner()
+    results = {
+        item["id"]: item
+        for item in planner.plan(
+            {"target_amount", "unit_price", "quantity"},
+            ORDER_ANALYSIS_CAPABILITIES,
+        )
+    }
+
+    assert results["target_completion"]["supported"] is True
+    assert results["target_completion"]["matched_fields"] == [
+        "target_amount",
+        "unit_price",
+        "quantity",
+    ]

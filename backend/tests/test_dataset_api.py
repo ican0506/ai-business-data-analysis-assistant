@@ -170,6 +170,13 @@ def test_get_dataset_metrics_returns_sales_summary_and_region_ranking(client: Te
     assert data["sales_amount"]["maximum"] == 1800
     assert data["completion_rate"] == 84.44
     assert data["top_regions"][0] == {"name": "east", "value": 3000}
+    assert data["highest_sales_region"] == {"name": "east", "value": 3000}
+    assert data["lowest_sales_region"] == {"name": "south", "value": 800}
+    assert data["region_performance"] == [
+        {"name": "east", "sales_amount": 3000, "target_amount": 3500, "completion_rate": 85.71},
+        {"name": "south", "sales_amount": 800, "target_amount": 1000, "completion_rate": 80.0},
+    ]
+    assert data["sales_volatility"]["coefficient_of_variation"] == 32.44
 
 
 def test_generate_business_analysis_returns_structured_fallback_report(client: TestClient) -> None:
@@ -190,6 +197,9 @@ def test_generate_business_analysis_returns_structured_fallback_report(client: T
     assert data["summary"]
     assert data["anomalies"]
     assert data["recommendations"]
+    assert any("\u5b8c\u6210\u7387" in item for item in data["anomalies"])
+    assert any("\u73af\u6bd4\u4e0b\u964d" in item for item in data["anomalies"])
+    assert any("\u533a\u57df" in item for item in data["business_problems"])
 
 
 def test_export_excel_report_returns_workbook(client: TestClient) -> None:

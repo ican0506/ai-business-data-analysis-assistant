@@ -26,13 +26,19 @@ class MetricsService:
         sales = self._numeric(frame, "sales_amount")
         targets = self._numeric(frame, "target_amount")
         total_sales = float(sales.sum())
+        region_ranking = self._region_ranking(frame)
         result = {
             "dataset_id": dataset.id,
             "total_rows": len(frame.index),
             "sales_amount": self._summary(sales),
             "growth_rate": self._growth_rate(frame, sales),
             "completion_rate": round(total_sales / float(targets.sum()) * 100, 2) if float(targets.sum()) else None,
-            "top_regions": self._top_regions(frame),
+            "top_regions": region_ranking[:10],
+            "region_ranking": region_ranking,
+            "highest_sales_region": region_ranking[0] if region_ranking else None,
+            "lowest_sales_region": region_ranking[-1] if region_ranking else None,
+            "region_performance": self._region_performance(frame),
+            "sales_volatility": self._sales_volatility(sales),
         }
         return result
 
@@ -58,11 +64,47 @@ class MetricsService:
 
     @staticmethod
     def _top_regions(frame: pd.DataFrame) -> list[dict]:
+        return MetricsService._region_ranking(frame)[:10]
+
+    @staticmethod
+    def _region_ranking(frame: pd.DataFrame) -> list[dict]:
         if "region" not in frame or "sales_amount" not in frame:
             return []
         rows = frame.assign(_sales=pd.to_numeric(frame["sales_amount"], errors="coerce")).dropna(subset=["region", "_sales"])
-        grouped = rows.groupby("region", as_index=False)["_sales"].sum().sort_values("_sales", ascending=False).head(10)
+        grouped = rows.groupby("region", as_index=False)["_sales"].sum().sort_values("_sales", ascending=False)
         return [
             {"name": str(row["region"]), "value": round(float(row["_sales"]), 2)}
             for _, row in grouped.iterrows()
         ]
+
+    @staticmethod
+    def _region_performance(frame: pd.DataFrame) -> list[dict]:
+        if "region" not in frame or "sales_amount" not in frame:
+            return []
+        rows = frame.assign(
+            _sales=pd.to_numeric(frame["sales_amount"], errors="coerce"),
+            _target=pd.to_numeric(frame["target_amount"], errors="coerce") if "target_amount" in frame else 0,
+        ).dropna(subset=["region", "_sales"])
+        grouped = rows.groupby("region", as_index=False).agg(sales_amount=("_sales", "sum"), target_amount=("_target", "sum"))
+        grouped = grouped.sort_values("sales_amount", ascending=False)
+        return [
+            {
+                "name": str(row["region"]),
+                "sales_amount": round(float(row["sales_amount"]), 2),
+                "target_amount": round(float(row["target_amount"]), 2),
+                "completion_rate": round(float(row["sales_amount"]) / float(row["target_amount"]) * 100, 2)
+                if float(row["target_amount"])
+                else None,
+            }
+            for _, row in grouped.iterrows()
+        ]
+
+    @staticmethod
+    def _sales_volatility(sales: pd.Series) -> dict:
+        if len(sales.index) < 2 or float(sales.mean()) == 0:
+            return {"standard_deviation": None, "coefficient_of_variation": None}
+        standard_deviation = float(sales.std(ddof=0))
+        return {
+            "standard_deviation": round(standard_deviation, 2),
+            "coefficient_of_variation": round(standard_deviation / float(sales.mean()) * 100, 2),
+        }

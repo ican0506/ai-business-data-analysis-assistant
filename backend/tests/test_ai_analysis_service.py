@@ -25,6 +25,76 @@ def analysis_plan(*supported_ids: str) -> list[dict]:
     ]
 
 
+def student_analysis_plan(*supported_ids: str) -> list[dict]:
+    capability_ids = (
+        "student_count",
+        "score_summary",
+        "subject_score",
+        "class_score",
+        "student_score",
+        "exam_trend",
+    )
+    return [
+        {
+            "id": capability_id,
+            "name": capability_id,
+            "supported": capability_id in supported_ids,
+            "missing_fields": [] if capability_id in supported_ids else ["missing_field"],
+            "reason": None if capability_id in supported_ids else "缺少所需字段",
+        }
+        for capability_id in capability_ids
+    ]
+
+
+def student_metrics(**analysis_overrides: object) -> dict:
+    analysis = {
+        "student_count": 3,
+        "score_summary": {
+            "count": 6,
+            "average": 82.5,
+            "maximum": 98.0,
+            "minimum": 60.0,
+            "median": 84.0,
+        },
+        "subject_score": [
+            {"name": "数学", "count": 3, "average": 90.0, "maximum": 98.0, "minimum": 80.0},
+            {"name": "英语", "count": 3, "average": 75.0, "maximum": 88.0, "minimum": 60.0},
+        ],
+        "class_score": [
+            {"name": "一班", "count": 3, "average": 85.0, "maximum": 98.0, "minimum": 70.0},
+            {"name": "二班", "count": 3, "average": 80.0, "maximum": 92.0, "minimum": 60.0},
+        ],
+        "student_score": [
+            {"student_id": "S-1", "student_name": "张三", "score_count": 2, "average": 95.0, "maximum": 98.0, "minimum": 92.0},
+        ],
+        "exam_trend": [
+            {"name": "期中", "average": 78.0, "count": 3},
+            {"name": "期末", "average": 84.0, "count": 3},
+        ],
+    }
+    analysis.update(analysis_overrides)
+    supported_ids = tuple(
+        capability_id
+        for capability_id, value in analysis.items()
+        if value is not None and value != []
+    )
+    return {
+        "total_rows": 6,
+        "selected_module": {"id": "student_score", "name": "学生成绩分析"},
+        "available_fields": ["student_id", "score", "subject", "class_name", "exam_name"],
+        "analysis_plan": student_analysis_plan(*supported_ids),
+        "student_score_analysis": analysis,
+        "sales_amount": None,
+        "completion_rate": None,
+        "growth_rate": None,
+        "top_regions": [],
+        "region_performance": [],
+        "sales_volatility": None,
+        "order_count": None,
+        "product_quantity": [],
+    }
+
+
 def test_analyze_metrics_returns_business_insight_json() -> None:
     metrics = {
         "total_rows": 2,
@@ -137,6 +207,76 @@ def test_analyze_metrics_without_region_or_target_does_not_invent_them() -> None
     assert "销售额总计 100" in insight["summary"]
     assert "区域" not in insight["report"]
     assert "完成率" not in insight["report"]
+
+
+def test_student_score_fallback_interprets_only_calculated_score_metrics() -> None:
+    insight = AIAnalysisService().analyze_metrics(student_metrics())
+
+    assert insight["mode"] == "rule_based"
+    assert "学生数量 3" in insight["summary"]
+    assert "平均分 82.5" in insight["summary"]
+    assert "数学" in insight["report"]
+    assert "一班" in insight["report"]
+    assert "张三" in insight["report"]
+    assert "上升" in insight["report"]
+    assert "销售额" not in insight["report"]
+    assert "及格" not in insight["report"]
+    assert insight["analysis_context"]["selected_module"]["id"] == "student_score"
+    assert insight["analysis_context"]["supported_analyses"]["score_summary"]["average"] == 82.5
+
+
+def test_student_score_fallback_distinguishes_unavailable_and_real_zero() -> None:
+    unavailable = AIAnalysisService().analyze_metrics(
+        student_metrics(score_summary=None, subject_score=[], class_score=[], exam_trend=[])
+    )
+    real_zero = AIAnalysisService().analyze_metrics(
+        student_metrics(
+            score_summary={
+                "count": 2,
+                "average": 0.0,
+                "maximum": 0.0,
+                "minimum": 0.0,
+                "median": 0.0,
+            },
+            subject_score=[],
+            class_score=[],
+            exam_trend=[],
+        )
+    )
+
+    assert "有效成绩数量" not in unavailable["summary"]
+    assert "平均分 0.0" in real_zero["summary"]
+
+
+def test_student_score_fallback_does_not_invent_missing_class_or_trend() -> None:
+    insight = AIAnalysisService().analyze_metrics(
+        student_metrics(class_score=[], exam_trend=[])
+    )
+
+    assert "班级" not in insight["report"]
+    assert "趋势" not in insight["report"]
+
+
+def test_student_score_deepseek_payload_excludes_order_metrics(monkeypatch) -> None:
+    captured: dict[str, str] = {}
+
+    class SuccessfulCompletions:
+        def create(self, **kwargs):
+            captured["prompt"] = kwargs["messages"][0]["content"]
+            return SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content='{"summary": "成绩摘要"}'))]
+            )
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SuccessfulCompletions()))
+    monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(OpenAI=lambda **_kwargs: client))
+    metrics = student_metrics()
+    context = AIAnalysisService.build_analysis_context(metrics)
+    result = AIAnalysisService._generate_with_deepseek(metrics, context, {"mode": "rule_based"})
+
+    assert result["mode"] == "deepseek"
+    assert "student_score_analysis" in captured["prompt"]
+    assert "sales_amount" not in captured["prompt"]
+    assert "不得假设 60 分为及格线" in captured["prompt"]
 
 
 def test_deepseek_failure_returns_rule_based_fallback(monkeypatch) -> None:

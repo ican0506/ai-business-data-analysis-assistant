@@ -31,13 +31,19 @@ class ReportService:
         skipped_analyses = self._skipped_analysis_rows(metrics)
         if skipped_analyses:
             sheet.append(["本次未分析指标", "；".join(skipped_analyses)])
+        for title, headers, rows in self._student_score_tables(metrics):
+            sheet.append([])
+            sheet.append([title])
+            sheet.append(headers)
+            for row in rows:
+                sheet.append(row)
         sheet.append([])
         sheet.append(["AI 分析模式", analysis["mode"]])
         sheet.append(["数据摘要", analysis["summary"]])
         sheet.append(["异常发现", "；".join(analysis["anomalies"])])
         sheet.append(["业务问题", "；".join(analysis["business_problems"])])
         sheet.append(["优化建议", "；".join(analysis["recommendations"])])
-        top_regions = metrics.get("top_regions", [])
+        top_regions = [] if self._is_student_score(metrics) else metrics.get("top_regions", [])
         if top_regions:
             sheet["D1"] = "区域"
             sheet["E1"] = "销售额"
@@ -67,6 +73,23 @@ class ReportService:
     @staticmethod
     def _overview_rows(metrics: dict) -> list[tuple[str, str | float | int | None]]:
         """Build a shared business overview for Excel, Word, and PDF reports."""
+        if ReportService._is_student_score(metrics):
+            student_analysis = ReportService._student_score_analysis(metrics)
+            score_summary = student_analysis.get("score_summary")
+            rows: list[tuple[str, str | float | int | None]] = []
+            if student_analysis.get("student_count") is not None:
+                rows.append(("学生数量", student_analysis["student_count"]))
+            if isinstance(score_summary, dict):
+                rows.extend(
+                    [
+                        ("有效成绩数量", score_summary.get("count")),
+                        ("平均分", score_summary.get("average")),
+                        ("中位数", score_summary.get("median")),
+                        ("最高分", score_summary.get("maximum")),
+                        ("最低分", score_summary.get("minimum")),
+                    ]
+                )
+            return rows
         sales = metrics.get("sales_amount")
         highest = metrics.get("highest_sales_region")
         lowest = metrics.get("lowest_sales_region")
@@ -106,6 +129,60 @@ class ReportService:
                 ]
             )
         return rows
+
+    @staticmethod
+    def _is_student_score(metrics: dict) -> bool:
+        return (metrics.get("selected_module") or {}).get("id") == "student_score"
+
+    @staticmethod
+    def _student_score_analysis(metrics: dict) -> dict:
+        value = metrics.get("student_score_analysis")
+        return value if isinstance(value, dict) else {}
+
+    @staticmethod
+    def _student_score_tables(metrics: dict) -> list[tuple[str, list[str], list[list[object]]]]:
+        if not ReportService._is_student_score(metrics):
+            return []
+        analysis = ReportService._student_score_analysis(metrics)
+        tables: list[tuple[str, list[str], list[list[object]]]] = []
+        for key, title, first_column in (
+            ("subject_score", "学科成绩统计", "学科"),
+            ("class_score", "班级成绩统计", "班级"),
+        ):
+            values = analysis.get(key, [])
+            if values:
+                tables.append(
+                    (
+                        title,
+                        [first_column, "有效成绩数", "平均分", "最高分", "最低分"],
+                        [
+                            [item["name"], item["count"], item["average"], item["maximum"], item["minimum"]]
+                            for item in values
+                        ],
+                    )
+                )
+        students = analysis.get("student_score", [])
+        if students:
+            headers = ["学生编号", "有效成绩数", "平均分", "最高分", "最低分"]
+            if any(item.get("student_name") for item in students):
+                headers.insert(1, "学生姓名")
+            rows: list[list[object]] = []
+            for item in students:
+                row: list[object] = [item["student_id"]]
+                if "学生姓名" in headers:
+                    row.append(item.get("student_name", ""))
+                rows.append(row + [item["score_count"], item["average"], item["maximum"], item["minimum"]])
+            tables.append(("学生成绩汇总", headers, rows))
+        trend = analysis.get("exam_trend", [])
+        if trend:
+            tables.append(
+                (
+                    "考试趋势",
+                    ["考试", "平均分", "有效成绩数"],
+                    [[item["name"], item["average"], item["count"]] for item in trend],
+                )
+            )
+        return tables
 
     @staticmethod
     def _skipped_analysis_rows(metrics: dict) -> list[str]:
@@ -197,7 +274,16 @@ class ReportService:
         ]
         if skipped_analyses:
             sections.insert(2, (f"\u672c\u6b21\u672a\u5206\u6790\u6307\u6807\uff1a{'\uff1b'.join(skipped_analyses)}", 8.5))
-        figure, axis = plt.subplots(figsize=(8.2, 5.5))
+        if ReportService._is_student_score(metrics):
+            sections[0] = ("AI 智能数据分析助手 - 学生成绩分析报告", 16)
+            for title, headers, rows in ReportService._student_score_tables(metrics):
+                sections.append((title, 10))
+                sections.append(("；".join(headers), 8.5))
+                sections.extend(
+                    ("；".join(str(value) for value in row), 8.5)
+                    for row in rows
+                )
+        figure, axis = plt.subplots(figsize=(8.2, max(5.5, 1.2 + len(sections) * 0.42)))
         axis.axis("off")
         y_position = 0.96
         for content, font_size in sections:
@@ -237,7 +323,17 @@ class ReportService:
             doc.add_heading("本次未分析指标", 1)
             for item in skipped_analyses:
                 doc.add_paragraph(item, style="List Bullet")
-        chart = self._build_region_chart(metrics)
+        for title, headers, rows in self._student_score_tables(metrics):
+            doc.add_heading(title, 1)
+            table = doc.add_table(rows=1, cols=len(headers))
+            table.style = "Table Grid"
+            for index, header in enumerate(headers):
+                table.rows[0].cells[index].text = str(header)
+            for row in rows:
+                cells = table.add_row().cells
+                for index, value in enumerate(row):
+                    cells[index].text = str(value)
+        chart = None if self._is_student_score(metrics) else self._build_region_chart(metrics)
         if chart is not None:
             doc.add_heading("区域销售额图表", 1)
             doc.add_picture(chart)
@@ -270,7 +366,11 @@ class ReportService:
             mask="auto",
         )
         canvas.showPage()
-        chart = self._build_region_chart(analysis["metrics"])
+        chart = (
+            None
+            if self._is_student_score(analysis["metrics"])
+            else self._build_region_chart(analysis["metrics"])
+        )
         if chart is not None:
             canvas.drawImage(
                 ImageReader(chart),

@@ -8,6 +8,7 @@ from app.core.config import get_settings
 from app.models.dataset import Dataset
 from app.models.dataset_cleaning import DatasetCleaningRun
 from app.services.analysis_engine import AnalysisEngine
+from app.services.student_score_analyzer import StudentScoreAnalyzer
 
 
 class MetricsService:
@@ -77,6 +78,7 @@ class MetricsService:
             "available_fields": available_fields,
             "analysis_plan": analysis_plan,
             "generic_analysis": None,
+            "student_score_analysis": None,
             "sales_amount": self._summary(sales) if sales is not None else None,
             "growth_rate": (
                 self._growth_rate(analysis_frame, sales)
@@ -114,6 +116,7 @@ class MetricsService:
     ) -> dict:
         """Keep the legacy metrics shape while preventing cross-domain calculations."""
         is_generic = selected_module["id"] == "generic"
+        is_student_score = selected_module["id"] == "student_score"
         return {
             "dataset_id": dataset_id,
             "total_rows": len(frame.index),
@@ -121,6 +124,11 @@ class MetricsService:
             "available_fields": available_fields,
             "analysis_plan": analysis_plan,
             "generic_analysis": engine.build_generic_analysis(frame) if is_generic else None,
+            "student_score_analysis": (
+                StudentScoreAnalyzer().analyze(frame, analysis_plan)
+                if is_student_score
+                else None
+            ),
             "sales_amount": None,
             "growth_rate": None,
             "completion_rate": None,

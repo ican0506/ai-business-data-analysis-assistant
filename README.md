@@ -1,5 +1,17 @@
 # AI 智能数据分析助手
 
+## 多领域分析编排
+
+清洗后的 `DataFrame` 会先由 `AnalysisEngine` 识别可用字段，再通过 `ModuleRegistry`
+选择 `OrderModule`、`StudentScoreModule` 或 `GenericModule`，最后交给
+`AnalysisPlanner` 生成当前数据集可执行的 `analysis_plan`。
+
+- `OrderModule` 继续由 `MetricsService` 执行既有订单、销售、区域等真实指标计算；
+- `StudentScoreModule` 当前仅进行领域识别和能力规划，不计算成绩指标；
+- `GenericModule` 返回真实的行数、列画像和缺失值统计，不伪造订单或销售数据。
+
+因此，非订单数据会保留既有指标返回字段，但以 `None` 或空列表表达“不适用”，不会把缺失业务指标写成 `0`。
+
 ## 当前开发进度
 
 已完成 Analysis Planner 与 MetricsService 的能力驱动指标计算：系统会在清洗后的数据中识别可用字段，返回 `available_fields` 与 `analysis_plan`，并在字段缺失时以 `null` 或空列表表达“当前无法分析”，不会把缺字段误报为数值 `0`。

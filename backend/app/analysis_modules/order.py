@@ -45,6 +45,7 @@ class OrderModule(AnalysisModule):
     name = "订单分析"
 
     _SIGNALS: tuple[frozenset[str], ...] = (
+        frozenset(("sales_amount",)),
         frozenset(("order_id", "product")),
         frozenset(("sales_amount", "product")),
         frozenset(("quantity", "unit_price")),

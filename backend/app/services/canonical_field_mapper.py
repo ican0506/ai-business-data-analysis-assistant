@@ -2,59 +2,88 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Mapping
 
 import pandas as pd
 
+ORDER_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
+    "order_id": ("订单编号", "订单号", "order id", "order_id", "orderid"),
+    "product": ("商品", "商品名称", "产品", "产品名称", "product"),
+    "quantity": ("数量", "商品数量", "件数", "quantity"),
+    "unit_price": ("单价", "商品单价", "unit price", "unit_price"),
+    "sales_amount": ("销售额", "销售金额", "订单金额", "成交金额", "sales amount", "sales_amount", "sales"),
+    "customer_id": ("客户编号", "客户ID", "customer id", "customer_id"),
+    "region": ("区域", "地区", "大区", "region"),
+    "status": ("状态", "订单状态", "order status", "status"),
+    "date": ("日期", "订单日期", "交易日期", "date"),
+    "target_amount": ("目标额", "目标金额", "target amount", "target_amount", "target"),
+}
+STUDENT_SCORE_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
+    "student_id": ("学号", "学生编号", "student id", "student_id"),
+    "student_name": ("学生姓名", "姓名", "student name", "student_name"),
+    "subject": ("科目", "学科", "课程", "subject"),
+    "score": ("成绩", "分数", "得分", "score"),
+    "class_name": ("班级", "班级名称", "class", "class name", "class_name"),
+    "grade": ("年级", "年级名称", "grade"),
+    "exam_name": ("考试", "考试名称", "测试名称", "exam name", "exam_name"),
+    "exam_date": ("考试日期", "测试日期", "exam date", "exam_date"),
+}
+KNOWN_CANONICAL_FIELDS: tuple[str, ...] = tuple(
+    {**ORDER_FIELD_ALIASES, **STUDENT_SCORE_FIELD_ALIASES}
+)
 
 class CanonicalFieldMapper:
     """Map deterministic header aliases on an in-memory analysis copy only."""
 
-    ORDER_ALIASES: dict[str, tuple[str, ...]] = {
-        "order_id": ("订单编号", "订单号", "order id", "order_id", "orderid"),
-        "product": ("商品", "商品名称", "产品", "产品名称", "product"),
-        "quantity": ("数量", "商品数量", "件数", "quantity"),
-        "unit_price": ("单价", "商品单价", "unit price", "unit_price"),
-        "sales_amount": ("销售额", "销售金额", "订单金额", "成交金额", "sales amount", "sales_amount", "sales"),
-        "customer_id": ("客户编号", "客户ID", "customer id", "customer_id"),
-        "region": ("区域", "地区", "大区", "region"),
-        "status": ("状态", "订单状态", "order status", "status"),
-        "date": ("日期", "订单日期", "交易日期", "date"),
-        "target_amount": ("目标额", "目标金额", "target amount", "target_amount", "target"),
-    }
-    STUDENT_SCORE_ALIASES: dict[str, tuple[str, ...]] = {
-        "student_id": ("学号", "学生编号", "student id", "student_id"),
-        "student_name": ("学生姓名", "姓名", "student name", "student_name"),
-        "subject": ("科目", "学科", "课程", "subject"),
-        "score": ("成绩", "分数", "得分", "score"),
-        "class_name": ("班级", "班级名称", "class", "class name", "class_name"),
-        "grade": ("年级", "年级名称", "grade"),
-        "exam_name": ("考试", "考试名称", "测试名称", "exam name", "exam_name"),
-        "exam_date": ("考试日期", "测试日期", "exam date", "exam_date"),
-    }
+    ORDER_ALIASES = ORDER_FIELD_ALIASES
+    STUDENT_SCORE_ALIASES = STUDENT_SCORE_FIELD_ALIASES
 
     def __init__(self) -> None:
         self._aliases = self._build_alias_index()
 
-    def map_dataframe(self, frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, list[object]]]:
+    def map_dataframe(
+        self,
+        frame: pd.DataFrame,
+        overrides: Mapping[str, str] | None = None,
+    ) -> tuple[pd.DataFrame, dict[str, list[object]]]:
         """Return a renamed copy and JSON-serializable mapping metadata."""
         source_columns = [str(column) for column in frame.columns]
+        normalized_overrides = dict(overrides or {})
+        self.validate_overrides(frame, normalized_overrides)
         canonical_columns = {target for target in self._aliases.values() if target in source_columns}
         candidates: dict[str, list[str]] = {}
-        recognized_columns: set[str] = set(canonical_columns)
+        recognized_columns: set[str] = set(canonical_columns).union(normalized_overrides)
 
         for source in source_columns:
             target = self._aliases.get(self._normalize_header(source))
             if target is None:
                 continue
             recognized_columns.add(source)
+            if source in normalized_overrides:
+                continue
             if source != target:
                 candidates.setdefault(target, []).append(source)
 
-        rename_by_source: dict[str, str] = {}
-        mappings: list[dict[str, str]] = []
+        rename_by_source = dict(normalized_overrides)
+        mappings: list[dict[str, str]] = [
+            {"source": source, "target": target, "method": "override"}
+            for source, target in normalized_overrides.items()
+        ]
         conflicts: list[dict[str, object]] = []
         for target in self._ordered_targets():
             target_candidates = candidates.get(target, [])
+            override_sources = [
+                source for source, override_target in normalized_overrides.items()
+                if override_target == target
+            ]
+            if override_sources:
+                if target_candidates:
+                    conflicts.append({
+                        "target": target,
+                        "sources": [*override_sources, *target_candidates],
+                        "reason": "automatic mapping suppressed by override",
+                    })
+                continue
             if target in canonical_columns:
                 if target_candidates:
                     conflicts.append({
@@ -66,7 +95,7 @@ class CanonicalFieldMapper:
             if len(target_candidates) == 1:
                 source = target_candidates[0]
                 rename_by_source[source] = target
-                mappings.append({"source": source, "target": target})
+                mappings.append({"source": source, "target": target, "method": "automatic"})
             elif len(target_candidates) > 1:
                 conflicts.append({
                     "target": target,
@@ -81,6 +110,24 @@ class CanonicalFieldMapper:
             "unmapped_columns": [source for source in source_columns if source not in recognized_columns],
             "conflicts": conflicts,
         }
+
+    def validate_overrides(self, frame: pd.DataFrame, overrides: Mapping[str, str]) -> None:
+        source_columns = {str(column) for column in frame.columns}
+        targets = list(overrides.values())
+        for source, target in overrides.items():
+            if source not in source_columns:
+                raise ValueError(f"source column does not exist in dataset: {source}")
+            if target not in KNOWN_CANONICAL_FIELDS:
+                raise ValueError(f"unknown canonical target field: {target}")
+            if source in KNOWN_CANONICAL_FIELDS and source != target:
+                raise ValueError("source column is already a canonical field")
+            if target in source_columns and source != target:
+                raise ValueError("target canonical field already exists in dataset")
+        duplicates = sorted({target for target in targets if targets.count(target) > 1})
+        if duplicates:
+            raise ValueError(
+                f'multiple source columns map to canonical field "{duplicates[0]}"'
+            )
 
     def _build_alias_index(self) -> dict[str, str]:
         aliases: dict[str, str] = {}

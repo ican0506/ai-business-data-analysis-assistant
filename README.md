@@ -11,6 +11,9 @@
 ```
 
 - 当前支持确定性的 Order 与 StudentScore 中英文别名：例如 `订单编号 → order_id`、`商品名称 → product`、`学号 → student_id`、`成绩 → score`。
+- 支持按数据集保存字段映射覆盖（override）：覆盖规则优先级为“用户覆盖 > 自动别名 > 保留原始字段”。覆盖只作用于内存分析副本，不会改写原始上传文件或清洗后的 CSV。
+- 可通过 `GET /api/v1/datasets/{id}/field-mapping` 预览当前自动映射与覆盖结果，并使用 `PUT /api/v1/datasets/{id}/field-mapping` 全量保存覆盖。例如：`{"overrides":{"总评":"score","课程名称":"subject"}}`；传入 `{"overrides":{}}` 可清空该数据集的全部覆盖并恢复自动映射。
+- 覆盖保存会校验当前最新清洗文件的真实列名、canonical 目标白名单、同目标重复映射和覆盖 canonical 原列等冲突，并在单一数据库事务中完成替换。不同数据集的覆盖彼此隔离。
 - 映射仅作用于内存中的 `DataFrame.copy()`；不会改写用户上传文件、原始 CSV 或清洗后的 CSV。
 - canonical 字段优先；canonical 与别名并存、或多个别名同时指向同一字段时会记录 `conflicts`，不会静默覆盖或合并数据。
 - 未识别字段会保留原名并写入 `unmapped_columns`。
@@ -128,6 +131,8 @@ npm run dev
 - `POST /api/v1/auth/register`、`POST /api/v1/auth/login`
 - `POST /api/v1/datasets/upload`
 - `POST /api/v1/datasets/{id}/clean`
+- `GET /api/v1/datasets/{id}/field-mapping`
+- `PUT /api/v1/datasets/{id}/field-mapping`
 - `GET /api/v1/datasets/{id}/metrics`
 - `POST /api/v1/datasets/{id}/ai-analysis`
 - `GET /api/v1/datasets/{id}/reports/{excel|word|pdf}`

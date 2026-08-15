@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
+from collections.abc import Mapping
 
 from app.analysis_modules.generic import GenericModule
 from app.analysis_modules.order import OrderModule
@@ -34,14 +35,20 @@ class AnalysisEngine:
         self._planner = planner or AnalysisPlanner()
         self._field_mapper = field_mapper or CanonicalFieldMapper()
 
-    def build_context(self, frame: pd.DataFrame) -> dict[str, object]:
+    def build_context(
+        self, frame: pd.DataFrame, field_overrides: Mapping[str, str] | None = None
+    ) -> dict[str, object]:
         """Return public analysis context without exposing the analysis DataFrame."""
-        _mapped_frame, context = self.prepare_context(frame)
+        _mapped_frame, context = self.prepare_context(frame, field_overrides=field_overrides)
         return context
 
-    def prepare_context(self, frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, object]]:
+    def prepare_context(
+        self, frame: pd.DataFrame, field_overrides: Mapping[str, str] | None = None
+    ) -> tuple[pd.DataFrame, dict[str, object]]:
         """Create the one mapped frame shared by all later analysis steps."""
-        mapped_frame, field_mapping = self._field_mapper.map_dataframe(frame)
+        mapped_frame, field_mapping = self._field_mapper.map_dataframe(
+            frame, overrides=field_overrides
+        )
         available_set = self._planner.available_fields_from_dataframe(mapped_frame)
         available_fields = [
             str(column) for column in mapped_frame.columns if str(column) in available_set

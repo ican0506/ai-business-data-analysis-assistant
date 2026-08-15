@@ -8,10 +8,14 @@ from app.core.config import get_settings
 from app.models.dataset import Dataset
 from app.models.dataset_cleaning import DatasetCleaningRun
 from app.services.analysis_engine import AnalysisEngine
+from app.services.field_mapping_override_service import FieldMappingOverrideService
 from app.services.student_score_analyzer import StudentScoreAnalyzer
 
 
 class MetricsService:
+    def __init__(self, override_service: FieldMappingOverrideService | None = None) -> None:
+        self._override_service = override_service or FieldMappingOverrideService()
+
     def build_metrics(self, db: Session, dataset: Dataset) -> dict:
         run = db.scalar(
             select(DatasetCleaningRun)
@@ -25,11 +29,22 @@ class MetricsService:
         if not path.is_file():
             raise ValueError("清洗后的数据文件不存在，请重新清洗")
         frame = pd.read_csv(path, encoding="utf-8-sig")
-        return self._build_metrics_from_frame(frame, dataset_id=dataset.id)
+        return self._build_metrics_from_frame(
+            frame,
+            dataset_id=dataset.id,
+            field_overrides=self._override_service.get_overrides(db, dataset.id),
+        )
 
-    def _build_metrics_from_frame(self, frame: pd.DataFrame, dataset_id: int) -> dict:
+    def _build_metrics_from_frame(
+        self,
+        frame: pd.DataFrame,
+        dataset_id: int,
+        field_overrides: dict[str, str] | None = None,
+    ) -> dict:
         engine = AnalysisEngine()
-        analysis_frame, analysis_context = engine.prepare_context(frame)
+        analysis_frame, analysis_context = engine.prepare_context(
+            frame, field_overrides=field_overrides
+        )
         selected_module = analysis_context["selected_module"]
         available_fields = analysis_context["available_fields"]
         analysis_plan = analysis_context["analysis_plan"]

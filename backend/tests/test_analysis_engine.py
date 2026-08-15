@@ -91,6 +91,7 @@ def test_engine_maps_chinese_student_headers_before_selecting_module_and_plannin
     assert context["field_mapping"]["mappings"][0] == {
         "source": "学号",
         "target": "student_id",
+        "method": "automatic",
     }
 
 

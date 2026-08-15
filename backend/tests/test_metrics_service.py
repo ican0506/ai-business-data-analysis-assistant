@@ -135,6 +135,26 @@ def test_student_score_data_does_not_run_order_metrics() -> None:
     assert metrics["order_count"] is None
     assert metrics["product_quantity"] == []
     assert plan_by_id(metrics)["score_summary"]["supported"] is True
+    assert metrics["student_score_analysis"] == {
+        "student_count": 2,
+        "score_summary": {
+            "count": 2,
+            "average": 91.5,
+            "maximum": 95.0,
+            "minimum": 88.0,
+            "median": 91.5,
+        },
+        "subject_score": [
+            {"name": "math", "count": 1, "average": 95.0, "maximum": 95.0, "minimum": 95.0},
+            {"name": "english", "count": 1, "average": 88.0, "maximum": 88.0, "minimum": 88.0},
+        ],
+        "class_score": [],
+        "student_score": [
+            {"student_id": "S-1", "score_count": 1, "average": 95.0, "maximum": 95.0, "minimum": 95.0},
+            {"student_id": "S-2", "score_count": 1, "average": 88.0, "maximum": 88.0, "minimum": 88.0},
+        ],
+        "exam_trend": [],
+    }
 
 
 def test_generic_data_returns_base_profile_without_order_metrics() -> None:

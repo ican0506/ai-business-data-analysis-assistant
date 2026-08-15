@@ -64,3 +64,41 @@ def test_default_registry_registers_each_module_once() -> None:
     assert registry.select_module({"order_id", "product"}).id == "order"
     assert registry.select_module({"student_id", "score"}).id == "student_score"
     assert registry.select_module(set()).id == "generic"
+
+
+def test_engine_maps_chinese_student_headers_before_selecting_module_and_planning() -> None:
+    context = AnalysisEngine().build_context(
+        pd.DataFrame(
+            {
+                "学号": ["001"],
+                "姓名": ["张三"],
+                "科目": ["数学"],
+                "成绩": [90],
+                "班级": ["一班"],
+            }
+        )
+    )
+
+    assert context["selected_module"]["id"] == "student_score"
+    assert context["available_fields"] == [
+        "student_id",
+        "student_name",
+        "subject",
+        "score",
+        "class_name",
+    ]
+    assert plan_by_id(context)["class_score"]["supported"] is True
+    assert context["field_mapping"]["mappings"][0] == {
+        "source": "学号",
+        "target": "student_id",
+    }
+
+
+def test_engine_keeps_all_empty_mapped_score_unavailable() -> None:
+    context = AnalysisEngine().build_context(
+        pd.DataFrame({"学号": ["001"], "成绩": [None]})
+    )
+
+    assert context["selected_module"]["id"] == "student_score"
+    assert "score" not in context["available_fields"]
+    assert plan_by_id(context)["score_summary"]["supported"] is False

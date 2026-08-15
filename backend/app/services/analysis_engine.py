@@ -6,6 +6,7 @@ from app.analysis_modules.generic import GenericModule
 from app.analysis_modules.order import OrderModule
 from app.analysis_modules.registry import ModuleRegistry
 from app.analysis_modules.student_score import StudentScoreModule
+from app.services.canonical_field_mapper import CanonicalFieldMapper
 from app.services.analysis_planner import AnalysisPlanner
 
 
@@ -27,31 +28,41 @@ class AnalysisEngine:
         self,
         registry: ModuleRegistry | None = None,
         planner: AnalysisPlanner | None = None,
+        field_mapper: CanonicalFieldMapper | None = None,
     ) -> None:
         self._registry = registry or build_default_registry()
         self._planner = planner or AnalysisPlanner()
+        self._field_mapper = field_mapper or CanonicalFieldMapper()
 
     def build_context(self, frame: pd.DataFrame) -> dict[str, object]:
-        available_set = self._planner.available_fields_from_dataframe(frame)
+        """Return public analysis context without exposing the analysis DataFrame."""
+        _mapped_frame, context = self.prepare_context(frame)
+        return context
+
+    def prepare_context(self, frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, object]]:
+        """Create the one mapped frame shared by all later analysis steps."""
+        mapped_frame, field_mapping = self._field_mapper.map_dataframe(frame)
+        available_set = self._planner.available_fields_from_dataframe(mapped_frame)
         available_fields = [
-            str(column) for column in frame.columns if str(column) in available_set
+            str(column) for column in mapped_frame.columns if str(column) in available_set
         ]
-        # Domain identity comes from the cleaned table schema, while execution
-        # support still requires a real non-null value through ``available_set``.
+        # Module identity is determined from the mapped schema.  Individual
+        # capabilities still require non-null values through ``available_set``.
         selected_module = self._registry.select_module(
-            {str(column) for column in frame.columns}
+            {str(column) for column in mapped_frame.columns}
         )
         analysis_plan = self._planner.plan(
             available_set,
             selected_module.capabilities(),
         )
-        return {
+        return mapped_frame, {
             "selected_module": {
                 "id": selected_module.id,
                 "name": selected_module.name,
             },
             "available_fields": available_fields,
             "analysis_plan": analysis_plan,
+            "field_mapping": field_mapping,
         }
 
     @staticmethod

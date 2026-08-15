@@ -25,12 +25,12 @@ class ReportService:
         sheet["A1"].fill = PatternFill("solid", fgColor="1D4ED8")
         sheet.append(["数据集", dataset.original_filename])
         sheet.append(["有效记录", metrics["total_rows"]])
-        sheet.append(["销售额总计", metrics["sales_amount"]["total"]])
-        sheet.append(["销售额均值", metrics["sales_amount"]["average"]])
-        sheet.append(["目标完成率", metrics["completion_rate"]])
         overview_rows = self._overview_rows(metrics)
-        for label, value in (overview_rows[2], overview_rows[3], overview_rows[5]):
+        for label, value in overview_rows:
             sheet.append([label, value])
+        skipped_analyses = self._skipped_analysis_rows(metrics)
+        if skipped_analyses:
+            sheet.append(["本次未分析指标", "；".join(skipped_analyses)])
         sheet.append([])
         sheet.append(["AI 分析模式", analysis["mode"]])
         sheet.append(["数据摘要", analysis["summary"]])
@@ -67,10 +67,11 @@ class ReportService:
     @staticmethod
     def _overview_rows(metrics: dict) -> list[tuple[str, str | float | int | None]]:
         """Build a shared business overview for Excel, Word, and PDF reports."""
-        sales = metrics["sales_amount"]
+        sales = metrics.get("sales_amount")
         highest = metrics.get("highest_sales_region")
         lowest = metrics.get("lowest_sales_region")
         ranking = metrics.get("region_ranking", [])[:5]
+        products = metrics.get("product_quantity", [])
 
         def format_region(region: dict | None) -> str:
             if not region:
@@ -82,14 +83,45 @@ class ReportService:
             for index, region in enumerate(ranking, start=1)
         ) or "-"
         completion_rate = metrics.get("completion_rate")
-        return [
-            ("\u9500\u552e\u989d\u603b\u8ba1", sales["total"]),
-            ("\u5e73\u5747\u9500\u552e\u989d", sales.get("average")),
-            ("\u6700\u5927\u9500\u552e\u533a\u57df", format_region(highest)),
-            ("\u6700\u4f4e\u9500\u552e\u533a\u57df", format_region(lowest)),
-            ("\u5b8c\u6210\u7387", f"{completion_rate}%" if completion_rate is not None else "-"),
-            ("\u533a\u57df TOP \u6392\u540d", ranking_text),
-        ]
+        rows: list[tuple[str, str | float | int | None]] = []
+        if metrics.get("order_count") is not None:
+            rows.append(("\u8ba2\u5355\u6570\u91cf", metrics["order_count"]))
+        if isinstance(sales, dict):
+            rows.append(("\u9500\u552e\u989d\u603b\u8ba1", sales.get("total")))
+            rows.append(("\u5e73\u5747\u9500\u552e\u989d", sales.get("average")))
+        if products:
+            product_text = "\uff1b".join(
+                f"{index}. {product['name']}\uff1a{product['value']:g}"
+                for index, product in enumerate(products[:5], start=1)
+            )
+            rows.append(("\u5546\u54c1\u9500\u91cf\u6392\u540d", product_text))
+        if completion_rate is not None:
+            rows.append(("\u5b8c\u6210\u7387", f"{completion_rate}%"))
+        if ranking:
+            rows.extend(
+                [
+                    ("\u6700\u5927\u9500\u552e\u533a\u57df", format_region(highest)),
+                    ("\u6700\u4f4e\u9500\u552e\u533a\u57df", format_region(lowest)),
+                    ("\u533a\u57df TOP \u6392\u540d", ranking_text),
+                ]
+            )
+        return rows
+
+    @staticmethod
+    def _skipped_analysis_rows(metrics: dict) -> list[str]:
+        """Return compact capability notices without treating unavailable data as zero."""
+        rows: list[str] = []
+        for item in metrics.get("analysis_plan", []):
+            if item.get("supported"):
+                continue
+            missing_fields = item.get("missing_fields", [])
+            detail = (
+                f"\u7f3a\u5c11 {'\u3001'.join(missing_fields)} \u5b57\u6bb5"
+                if missing_fields
+                else item.get("reason") or "\u672a\u751f\u6210\u53ef\u7528\u8ba1\u7b97\u7ed3\u679c"
+            )
+            rows.append(f"{item.get('name', item.get('id', '\u672a\u77e5\u6307\u6807'))}\uff1a{detail}")
+        return rows
 
     @staticmethod
     def _resolve_chart_font_path() -> Path:
@@ -154,6 +186,7 @@ class ReportService:
 
         metrics = analysis["metrics"]
         overview_rows = ReportService._overview_rows(metrics)
+        skipped_analyses = ReportService._skipped_analysis_rows(metrics)
         sections = [
             ("AI \u667a\u80fd\u6570\u636e\u5206\u6790\u52a9\u624b - \u4e1a\u52a1\u5206\u6790\u62a5\u544a", 16),
             (f"\u6570\u636e\u96c6\uff1a{dataset.original_filename}    \u6709\u6548\u8bb0\u5f55\uff1a{metrics['total_rows']}", 9),
@@ -162,6 +195,8 @@ class ReportService:
             (f"\u5f02\u5e38\u5206\u6790\uff1a{'\uff1b'.join(analysis['anomalies'])}", 8.5),
             (f"\u4e1a\u52a1\u5efa\u8bae\uff1a{'\uff1b'.join(analysis['recommendations'])}", 8.5),
         ]
+        if skipped_analyses:
+            sections.insert(2, (f"\u672c\u6b21\u672a\u5206\u6790\u6307\u6807\uff1a{'\uff1b'.join(skipped_analyses)}", 8.5))
         figure, axis = plt.subplots(figsize=(8.2, 5.5))
         axis.axis("off")
         y_position = 0.96
@@ -189,24 +224,23 @@ class ReportService:
         from docx import Document
         from docx.shared import Pt
         analysis = self._analysis(db, dataset)
+        metrics = analysis["metrics"]
         doc = Document()
         doc.add_heading("AI 智能数据分析助手 - 业务分析报告", 0)
         doc.add_paragraph(f"数据集：{dataset.original_filename}")
         doc.add_heading("数据概览", 1)
-        for label, value in [("有效记录", analysis["metrics"]["total_rows"]), ("销售额总计", analysis["metrics"]["sales_amount"]["total"]), ("目标完成率", analysis["metrics"]["completion_rate"])]:
+        doc.add_paragraph(f"有效记录：{metrics['total_rows']}")
+        for label, value in self._overview_rows(metrics):
             doc.add_paragraph(f"{label}：{value}")
-        chart = self._build_region_chart(analysis["metrics"])
+        skipped_analyses = self._skipped_analysis_rows(metrics)
+        if skipped_analyses:
+            doc.add_heading("本次未分析指标", 1)
+            for item in skipped_analyses:
+                doc.add_paragraph(item, style="List Bullet")
+        chart = self._build_region_chart(metrics)
         if chart is not None:
             doc.add_heading("区域销售额图表", 1)
             doc.add_picture(chart)
-        doc.add_heading("\u9500\u552e\u6982\u89c8\u4e0e\u533a\u57df\u6392\u540d", 1)
-        for label, value in (
-            self._overview_rows(analysis["metrics"])[1],
-            self._overview_rows(analysis["metrics"])[2],
-            self._overview_rows(analysis["metrics"])[3],
-            self._overview_rows(analysis["metrics"])[5],
-        ):
-            doc.add_paragraph(f"{label}\uff1a{value}")
         for title, content in [("数据摘要", analysis["summary"]), ("异常发现", "；".join(analysis["anomalies"])), ("业务问题", "；".join(analysis["business_problems"])), ("优化建议", "；".join(analysis["recommendations"]))]:
             doc.add_heading(title, 1); doc.add_paragraph(content)
         for style in doc.styles:

@@ -28,14 +28,21 @@ class AIAnalysisService:
         plan_by_id = {
             item["id"]: item for item in metrics.get("analysis_plan", [])
         }
-        calculated_metrics = {
-            "order_count": metrics.get("order_count"),
-            "product_quantity": metrics.get("product_quantity"),
-            "sales_total": metrics.get("sales_amount"),
-            "region_sales": metrics.get("top_regions"),
-            "sales_trend": metrics.get("growth_rate"),
-            "target_completion": metrics.get("completion_rate"),
-        }
+        selected_module = metrics.get("selected_module") or {"id": "order", "name": "订单分析"}
+        module_id = selected_module.get("id", "order")
+        if module_id == "student_score":
+            calculated_metrics = (metrics.get("student_score_analysis") or {}).copy()
+        elif module_id == "generic":
+            calculated_metrics = {"generic_analysis": metrics.get("generic_analysis")}
+        else:
+            calculated_metrics = {
+                "order_count": metrics.get("order_count"),
+                "product_quantity": metrics.get("product_quantity"),
+                "sales_total": metrics.get("sales_amount"),
+                "region_sales": metrics.get("top_regions"),
+                "sales_trend": metrics.get("growth_rate"),
+                "target_completion": metrics.get("completion_rate"),
+            }
         supported: dict[str, object] = {}
         for capability_id, value in calculated_metrics.items():
             plan_item = plan_by_id.get(capability_id)
@@ -56,12 +63,19 @@ class AIAnalysisService:
                 )
 
         return {
+            "selected_module": selected_module,
             "available_fields": metrics.get("available_fields", []),
+            "analysis_plan": metrics.get("analysis_plan", []),
             "supported_analyses": supported,
             "skipped_analyses": skipped,
         }
 
     def _build_rule_report(self, metrics: dict, analysis_context: dict) -> dict:
+        module_id = analysis_context["selected_module"].get("id")
+        if module_id == "student_score":
+            return self._build_student_score_rule_report(metrics, analysis_context)
+        if module_id == "generic":
+            return self._build_generic_rule_report(metrics, analysis_context)
         supported = analysis_context["supported_analyses"]
         sales_amount = supported.get("sales_total")
         completion_rate = supported.get("target_completion")
@@ -156,19 +170,163 @@ class AIAnalysisService:
         }
 
     @staticmethod
+    def _build_student_score_rule_report(metrics: dict, analysis_context: dict) -> dict:
+        supported = analysis_context["supported_analyses"]
+        summary_parts = [f"本次成绩分析覆盖 {metrics.get('total_rows', 0)} 条有效记录"]
+        anomalies: list[str] = []
+        problems: list[str] = []
+        recommendations: list[str] = []
+
+        student_count = supported.get("student_count")
+        score_summary = supported.get("score_summary")
+        subject_score = supported.get("subject_score", [])
+        class_score = supported.get("class_score", [])
+        student_score = supported.get("student_score", [])
+        exam_trend = supported.get("exam_trend", [])
+
+        if student_count is not None:
+            summary_parts.append(f"学生数量 {student_count}")
+        if isinstance(score_summary, dict):
+            summary_parts.append(
+                "有效成绩数量 {count}，平均分 {average}，中位数 {median}，最高分 {maximum}，最低分 {minimum}".format(
+                    **score_summary
+                )
+            )
+        if subject_score:
+            best_subject, lowest_subject = subject_score[0], subject_score[-1]
+            summary_parts.append(
+                f"学科平均分最高为 {best_subject['name']}（{best_subject['average']}）"
+            )
+            if best_subject["name"] != lowest_subject["name"]:
+                anomalies.append(
+                    f"学科平均分存在差异：{best_subject['name']} 为 {best_subject['average']}，"
+                    f"{lowest_subject['name']} 为 {lowest_subject['average']}。"
+                )
+                recommendations.append(
+                    f"结合 {lowest_subject['name']} 的现有成绩数据安排针对性复盘，并跟踪后续考试变化。"
+                )
+        if class_score:
+            best_class, lowest_class = class_score[0], class_score[-1]
+            summary_parts.append(
+                f"班级平均分较高的是 {best_class['name']}（{best_class['average']}）"
+            )
+            if best_class["name"] != lowest_class["name"]:
+                anomalies.append(
+                    f"班级平均分存在差异：{best_class['name']} 为 {best_class['average']}，"
+                    f"{lowest_class['name']} 为 {lowest_class['average']}。"
+                )
+                recommendations.append("对比已有班级的教学安排与考试数据，识别可复用的改进做法。")
+        if student_score:
+            leading_student = student_score[0]
+            student_label = leading_student.get("student_name") or leading_student["student_id"]
+            summary_parts.append(
+                f"当前已计算成绩中平均分较高的学生为 {student_label}（{leading_student['average']}）"
+            )
+        if len(exam_trend) >= 2:
+            first, last = exam_trend[0], exam_trend[-1]
+            change = round(float(last["average"]) - float(first["average"]), 2)
+            if change > 0:
+                trend_text = f"从 {first['name']} 到 {last['name']}，平均成绩上升 {change} 分。"
+            elif change < 0:
+                trend_text = f"从 {first['name']} 到 {last['name']}，平均成绩下降 {abs(change)} 分。"
+            else:
+                trend_text = f"从 {first['name']} 到 {last['name']}，平均成绩保持不变。"
+            anomalies.append(trend_text)
+            recommendations.append("基于已存在的考试趋势持续复盘，并补充后续考试数据验证变化。")
+
+        if not anomalies:
+            anomalies.append("当前已计算的成绩指标未触发额外差异或趋势结论。")
+        if not problems:
+            problems.append("仅基于当前已计算的成绩指标进行描述，未对缺失指标作业务评价。")
+        if not recommendations:
+            recommendations.append("持续补充真实考试、学科或班级数据，以支持后续对比分析。")
+
+        overview = "；".join(summary_parts) + "。"
+        return {
+            "mode": "rule_based",
+            "summary": overview,
+            "anomalies": anomalies,
+            "business_problems": problems,
+            "recommendations": recommendations,
+            "report": "\n".join(
+                [
+                    f"数据概览：{overview}",
+                    f"异常分析：{'；'.join(anomalies)}",
+                    f"业务问题：{'；'.join(problems)}",
+                    f"优化建议：{'；'.join(recommendations)}",
+                ]
+            ),
+            "analysis_context": analysis_context,
+        }
+
+    @staticmethod
+    def _build_generic_rule_report(metrics: dict, analysis_context: dict) -> dict:
+        generic_analysis = analysis_context["supported_analyses"].get("generic_analysis") or {}
+        row_count = generic_analysis.get("row_count", metrics.get("total_rows", 0))
+        column_count = len(generic_analysis.get("column_profile", []))
+        missing_columns = [
+            item["column"]
+            for item in generic_analysis.get("missing_value_analysis", [])
+            if item.get("missing_count", 0) > 0
+        ]
+        overview = f"本次通用数据分析覆盖 {row_count} 行、{column_count} 列。"
+        anomalies = (
+            [f"存在缺失值的列：{'、'.join(missing_columns)}。"]
+            if missing_columns
+            else ["当前通用数据未发现已统计的缺失值。"]
+        )
+        return {
+            "mode": "rule_based",
+            "summary": overview,
+            "anomalies": anomalies,
+            "business_problems": ["通用数据仅输出行列与缺失情况，不推断业务领域指标。"],
+            "recommendations": ["补充字段业务含义后，可接入对应领域模块进行进一步分析。"],
+            "report": f"数据概览：{overview}\n异常分析：{'；'.join(anomalies)}",
+            "analysis_context": analysis_context,
+        }
+
+    @staticmethod
+    def _deepseek_metrics_payload(metrics: dict, analysis_context: dict) -> dict:
+        selected_module = analysis_context.get("selected_module") or {"id": "order"}
+        if selected_module.get("id") == "student_score":
+            return {
+                "selected_module": selected_module,
+                "available_fields": analysis_context.get("available_fields", []),
+                "analysis_plan": analysis_context.get("analysis_plan", []),
+                "student_score_analysis": metrics.get("student_score_analysis"),
+            }
+        if selected_module.get("id") == "generic":
+            return {
+                "selected_module": selected_module,
+                "available_fields": analysis_context.get("available_fields", []),
+                "analysis_plan": analysis_context.get("analysis_plan", []),
+                "generic_analysis": metrics.get("generic_analysis"),
+            }
+        return metrics
+
+    @staticmethod
     def _generate_with_deepseek(metrics: dict, analysis_context: dict, fallback: dict) -> dict:
         from openai import OpenAI
 
         settings = get_settings()
+        selected_module = (analysis_context.get("selected_module") or {"id": "order"}).get("id")
+        student_constraints = (
+            "当前是学生成绩数据：只能使用 student_score_analysis；不得重新计算原始成绩；"
+            "不得假设 60 分为及格线；不得推断及格率、优秀率、GPA、排名规则或学生画像；"
+            "不得编造学生、学科、班级或考试。\n"
+            if selected_module == "student_score"
+            else ""
+        )
         prompt = (
             "你是一名企业运营数据分析师。只可基于 Python 已计算的真实分析结果生成中文报告。"
             "只能分析 supported_analyses 和提供的 metrics；不得推断 skipped_analyses。"
             "缺失字段不代表数值为 0；不得编造销售额、完成率、区域、客户或退款数据。"
             "所有数字必须来自输入 metrics；真实为 0 的指标可以正常说明。"
             "可以说明某项因缺少字段未分析，但不得评价该项业务表现，也不得根据字段名称自行补充指标。"
+            f"{student_constraints}"
             "返回 JSON：summary, anomalies, business_problems, recommendations, report。\n"
             f"分析上下文：{analysis_context}\n"
-            f"真实指标：{metrics}"
+            f"真实指标：{AIAnalysisService._deepseek_metrics_payload(metrics, analysis_context)}"
         )
         try:
             response = OpenAI(api_key=settings.llm_api_key, base_url=settings.llm_base_url).chat.completions.create(

@@ -97,6 +97,79 @@ def test_report_service_keeps_real_zero_sales_in_overview() -> None:
     assert rows["平均销售额"] == 0
 
 
+def student_metrics(**analysis_overrides: object) -> dict:
+    score_analysis = {
+        "student_count": 2,
+        "score_summary": {
+            "count": 4,
+            "average": 0.0,
+            "maximum": 0.0,
+            "minimum": 0.0,
+            "median": 0.0,
+        },
+        "subject_score": [
+            {"name": "数学", "count": 2, "average": 0.0, "maximum": 0.0, "minimum": 0.0},
+        ],
+        "class_score": [],
+        "student_score": [
+            {"student_id": "S-1", "score_count": 2, "average": 0.0, "maximum": 0.0, "minimum": 0.0},
+        ],
+        "exam_trend": [],
+    }
+    score_analysis.update(analysis_overrides)
+    return {
+        "total_rows": 4,
+        "selected_module": {"id": "student_score", "name": "学生成绩分析"},
+        "student_score_analysis": score_analysis,
+        "sales_amount": None,
+        "completion_rate": None,
+        "order_count": None,
+        "product_quantity": [],
+        "region_ranking": [],
+        "top_regions": [],
+        "analysis_plan": [],
+    }
+
+
+def test_student_score_overview_contains_real_score_metrics_without_order_metrics() -> None:
+    rows = dict(ReportService._overview_rows(student_metrics()))
+
+    assert rows["学生数量"] == 2
+    assert rows["有效成绩数量"] == 4
+    assert rows["平均分"] == 0.0
+    assert rows["中位数"] == 0.0
+    assert rows["最高分"] == 0.0
+    assert rows["最低分"] == 0.0
+    assert "销售额总计" not in rows
+    assert "完成率" not in rows
+
+
+def test_student_score_exports_create_dynamic_tables_without_order_chart() -> None:
+    metrics = student_metrics()
+    analysis = {
+        "mode": "rule_based",
+        "metrics": metrics,
+        "summary": "学生数量 2，平均分 0.0。",
+        "anomalies": ["已计算的成绩指标未触发额外风险规则。"],
+        "business_problems": ["应继续积累考试数据。"],
+        "recommendations": ["围绕已存在的学科成绩安排复盘。"],
+    }
+    service = ReportService()
+    service.analysis_service = SimpleNamespace(generate_report=lambda *_args: analysis)
+    dataset = SimpleNamespace(original_filename="scores.csv")
+
+    workbook = load_workbook(BytesIO(service.build_excel(None, dataset)))
+    values = [cell.value for row in workbook.active.iter_rows() for cell in row if cell.value is not None]
+
+    assert "学生数量" in values
+    assert "学科成绩统计" in values
+    assert "班级成绩统计" not in values
+    assert "销售额总计" not in values
+    assert workbook.active._charts == []
+    assert service.build_word(None, dataset).startswith(b"PK")
+    assert service.build_pdf(None, dataset).startswith(b"%PDF")
+
+
 def test_report_exports_skip_unavailable_sales_and_region_chart() -> None:
     metrics = {
         "total_rows": 2,

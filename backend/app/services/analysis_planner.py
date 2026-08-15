@@ -1,18 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 
 import pandas as pd
-
-
-@dataclass(frozen=True)
-class AnalysisCapability:
-    id: str
-    name: str
-    all_of: tuple[str, ...] = ()
-    any_of: tuple[tuple[str, ...], ...] = ()
-    description: str | None = None
+from app.analysis_modules.base import AnalysisCapability
+from app.analysis_modules.order import ORDER_ANALYSIS_CAPABILITIES
 
 
 class AnalysisPlanner:
@@ -82,7 +74,7 @@ class AnalysisPlanner:
         return list(dict.fromkeys(fields))
 
 
-ORDER_ANALYSIS_CAPABILITIES: tuple[AnalysisCapability, ...] = (
+_LEGACY_ORDER_ANALYSIS_CAPABILITIES: tuple[AnalysisCapability, ...] = (
     AnalysisCapability(
         id="order_count",
         name="订单数量分析",

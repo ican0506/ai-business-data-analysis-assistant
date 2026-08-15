@@ -194,3 +194,59 @@ def test_empty_dataframe_safely_uses_generic_module() -> None:
         "column_profile": [],
         "missing_value_analysis": [],
     }
+
+
+def test_chinese_student_headers_run_real_student_score_analysis_on_mapped_frame() -> None:
+    metrics = build_metrics(
+        {
+            "学号": ["001", "001", "002"],
+            "姓名": ["张三", "张三", "李四"],
+            "科目": ["数学", "英语", "数学"],
+            "成绩": [90, 80, 85],
+            "班级": ["一班", "一班", "一班"],
+        }
+    )
+
+    assert metrics["selected_module"]["id"] == "student_score"
+    assert metrics["student_score_analysis"]["student_count"] == 2
+    assert metrics["student_score_analysis"]["score_summary"]["average"] == 85.0
+    assert metrics["student_score_analysis"]["subject_score"] == [
+        {"name": "数学", "count": 2, "average": 87.5, "maximum": 90.0, "minimum": 85.0},
+        {"name": "英语", "count": 1, "average": 80.0, "maximum": 80.0, "minimum": 80.0},
+    ]
+    assert metrics["field_mapping"]["unmapped_columns"] == []
+
+
+def test_chinese_order_headers_keep_derived_sales_calculation_on_mapped_frame() -> None:
+    metrics = build_metrics(
+        {
+            "订单编号": ["O-1", "O-2"],
+            "商品名称": ["A", "B"],
+            "数量": [2, 3],
+            "单价": [10, 20],
+            "区域": ["华东", "华南"],
+        }
+    )
+
+    assert metrics["selected_module"]["id"] == "order"
+    assert metrics["sales_amount"]["total"] == 80.0
+    assert metrics["region_ranking"] == [
+        {"name": "华南", "value": 60.0},
+        {"name": "华东", "value": 20.0},
+    ]
+    assert metrics["field_mapping"]["mappings"][0] == {
+        "source": "订单编号",
+        "target": "order_id",
+    }
+
+
+def test_unknown_chinese_columns_remain_generic_and_are_reported_as_unmapped() -> None:
+    metrics = build_metrics({"城市": ["上海"], "温度": [30], "备注": ["晴"]})
+
+    assert metrics["selected_module"]["id"] == "generic"
+    assert metrics["generic_analysis"]["column_profile"][0]["name"] == "城市"
+    assert metrics["field_mapping"] == {
+        "mappings": [],
+        "unmapped_columns": ["城市", "温度", "备注"],
+        "conflicts": [],
+    }

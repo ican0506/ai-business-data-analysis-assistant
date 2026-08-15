@@ -29,23 +29,25 @@ class MetricsService:
 
     def _build_metrics_from_frame(self, frame: pd.DataFrame, dataset_id: int) -> dict:
         engine = AnalysisEngine()
-        analysis_context = engine.build_context(frame)
+        analysis_frame, analysis_context = engine.prepare_context(frame)
         selected_module = analysis_context["selected_module"]
         available_fields = analysis_context["available_fields"]
         analysis_plan = analysis_context["analysis_plan"]
+        field_mapping = analysis_context["field_mapping"]
 
         if selected_module["id"] != "order":
             return self._build_non_order_metrics(
-                frame,
+                analysis_frame,
                 dataset_id,
                 selected_module,
                 available_fields,
                 analysis_plan,
+                field_mapping,
                 engine,
             )
 
         plan_by_id = {item["id"]: item for item in analysis_plan}
-        analysis_frame = frame.copy()
+        analysis_frame = analysis_frame.copy()
 
         if self._is_supported(plan_by_id, "sales_total"):
             matched_fields = plan_by_id["sales_total"].get("matched_fields", [])
@@ -73,10 +75,11 @@ class MetricsService:
         )
         result = {
             "dataset_id": dataset_id,
-            "total_rows": len(frame.index),
+            "total_rows": len(analysis_frame.index),
             "selected_module": selected_module,
             "available_fields": available_fields,
             "analysis_plan": analysis_plan,
+            "field_mapping": field_mapping,
             "generic_analysis": None,
             "student_score_analysis": None,
             "sales_amount": self._summary(sales) if sales is not None else None,
@@ -96,9 +99,9 @@ class MetricsService:
                 else []
             ),
             "sales_volatility": self._sales_volatility(sales) if sales is not None else None,
-            "order_count": self._order_count(frame) if self._is_supported(plan_by_id, "order_count") else None,
+            "order_count": self._order_count(analysis_frame) if self._is_supported(plan_by_id, "order_count") else None,
             "product_quantity": (
-                self._product_quantity(frame)
+                self._product_quantity(analysis_frame)
                 if self._is_supported(plan_by_id, "product_quantity")
                 else []
             ),
@@ -112,6 +115,7 @@ class MetricsService:
         selected_module: dict[str, object],
         available_fields: list[str],
         analysis_plan: list[dict[str, object]],
+        field_mapping: dict[str, object],
         engine: AnalysisEngine,
     ) -> dict:
         """Keep the legacy metrics shape while preventing cross-domain calculations."""
@@ -123,6 +127,7 @@ class MetricsService:
             "selected_module": selected_module,
             "available_fields": available_fields,
             "analysis_plan": analysis_plan,
+            "field_mapping": field_mapping,
             "generic_analysis": engine.build_generic_analysis(frame) if is_generic else None,
             "student_score_analysis": (
                 StudentScoreAnalyzer().analyze(frame, analysis_plan)

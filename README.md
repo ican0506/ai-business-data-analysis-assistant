@@ -2,6 +2,20 @@
 
 ## 多领域分析编排
 
+### Canonical Field Mapping（内存分析字段映射）
+
+分析链路会先将清洗后的原始字段复制为内存分析副本，再依次执行：
+
+```text
+原始字段 → CanonicalFieldMapper → ModuleRegistry → AnalysisPlanner → Analyzer → AI / Report
+```
+
+- 当前支持确定性的 Order 与 StudentScore 中英文别名：例如 `订单编号 → order_id`、`商品名称 → product`、`学号 → student_id`、`成绩 → score`。
+- 映射仅作用于内存中的 `DataFrame.copy()`；不会改写用户上传文件、原始 CSV 或清洗后的 CSV。
+- canonical 字段优先；canonical 与别名并存、或多个别名同时指向同一字段时会记录 `conflicts`，不会静默覆盖或合并数据。
+- 未识别字段会保留原名并写入 `unmapped_columns`。
+- 目前只使用精确、可预测的 alias 规则（NFKC、大小写、空白、`-` / `_` 标准化），不使用 AI、模糊匹配或 embedding。
+
 清洗后的 `DataFrame` 会先由 `AnalysisEngine` 识别可用字段，再通过 `ModuleRegistry`
 选择 `OrderModule`、`StudentScoreModule` 或 `GenericModule`，最后交给
 `AnalysisPlanner` 生成当前数据集可执行的 `analysis_plan`。

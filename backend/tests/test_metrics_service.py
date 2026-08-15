@@ -115,3 +115,62 @@ def test_target_is_optional_for_region_sales_but_required_for_completion() -> No
         {"name": "east", "sales_amount": 100.0, "target_amount": None, "completion_rate": None},
     ]
     assert plan_by_id(metrics)["target_completion"]["supported"] is False
+
+
+def test_student_score_data_does_not_run_order_metrics() -> None:
+    metrics = build_metrics(
+        {
+            "student_id": ["S-1", "S-2"],
+            "subject": ["math", "english"],
+            "score": [95, 88],
+        }
+    )
+
+    assert metrics["selected_module"]["id"] == "student_score"
+    assert metrics["sales_amount"] is None
+    assert metrics["growth_rate"] is None
+    assert metrics["completion_rate"] is None
+    assert metrics["top_regions"] == []
+    assert metrics["region_ranking"] == []
+    assert metrics["order_count"] is None
+    assert metrics["product_quantity"] == []
+    assert plan_by_id(metrics)["score_summary"]["supported"] is True
+
+
+def test_generic_data_returns_base_profile_without_order_metrics() -> None:
+    metrics = build_metrics(
+        {
+            "city": ["Shanghai", None],
+            "temperature": [30, None],
+            "timestamp": ["2026-08-01", "2026-08-02"],
+        }
+    )
+
+    assert metrics["selected_module"]["id"] == "generic"
+    assert metrics["sales_amount"] is None
+    assert metrics["order_count"] is None
+    assert metrics["product_quantity"] == []
+    assert metrics["generic_analysis"] == {
+        "row_count": 2,
+        "column_profile": [
+            {"name": "city", "dtype": "object", "non_null_count": 1, "null_count": 1},
+            {"name": "temperature", "dtype": "float64", "non_null_count": 1, "null_count": 1},
+            {"name": "timestamp", "dtype": "object", "non_null_count": 2, "null_count": 0},
+        ],
+        "missing_value_analysis": [
+            {"column": "city", "missing_count": 1, "missing_rate": 50.0},
+            {"column": "temperature", "missing_count": 1, "missing_rate": 50.0},
+            {"column": "timestamp", "missing_count": 0, "missing_rate": 0.0},
+        ],
+    }
+
+
+def test_empty_dataframe_safely_uses_generic_module() -> None:
+    metrics = build_metrics({})
+
+    assert metrics["selected_module"]["id"] == "generic"
+    assert metrics["generic_analysis"] == {
+        "row_count": 0,
+        "column_profile": [],
+        "missing_value_analysis": [],
+    }

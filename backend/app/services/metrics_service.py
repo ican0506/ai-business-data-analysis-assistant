@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.models.dataset import Dataset
 from app.models.dataset_cleaning import DatasetCleaningRun
-from app.services.analysis_planner import AnalysisPlanner, ORDER_ANALYSIS_CAPABILITIES
+from app.services.analysis_engine import AnalysisEngine
 
 
 class MetricsService:
@@ -27,10 +27,22 @@ class MetricsService:
         return self._build_metrics_from_frame(frame, dataset_id=dataset.id)
 
     def _build_metrics_from_frame(self, frame: pd.DataFrame, dataset_id: int) -> dict:
-        available_fields = self._available_fields_in_column_order(frame)
-        analysis_plan = AnalysisPlanner().plan(
-            set(available_fields), ORDER_ANALYSIS_CAPABILITIES
-        )
+        engine = AnalysisEngine()
+        analysis_context = engine.build_context(frame)
+        selected_module = analysis_context["selected_module"]
+        available_fields = analysis_context["available_fields"]
+        analysis_plan = analysis_context["analysis_plan"]
+
+        if selected_module["id"] != "order":
+            return self._build_non_order_metrics(
+                frame,
+                dataset_id,
+                selected_module,
+                available_fields,
+                analysis_plan,
+                engine,
+            )
+
         plan_by_id = {item["id"]: item for item in analysis_plan}
         analysis_frame = frame.copy()
 
@@ -61,8 +73,10 @@ class MetricsService:
         result = {
             "dataset_id": dataset_id,
             "total_rows": len(frame.index),
+            "selected_module": selected_module,
             "available_fields": available_fields,
             "analysis_plan": analysis_plan,
+            "generic_analysis": None,
             "sales_amount": self._summary(sales) if sales is not None else None,
             "growth_rate": (
                 self._growth_rate(analysis_frame, sales)
@@ -90,9 +104,35 @@ class MetricsService:
         return result
 
     @staticmethod
-    def _available_fields_in_column_order(frame: pd.DataFrame) -> list[str]:
-        available = AnalysisPlanner.available_fields_from_dataframe(frame)
-        return [str(column) for column in frame.columns if str(column) in available]
+    def _build_non_order_metrics(
+        frame: pd.DataFrame,
+        dataset_id: int,
+        selected_module: dict[str, object],
+        available_fields: list[str],
+        analysis_plan: list[dict[str, object]],
+        engine: AnalysisEngine,
+    ) -> dict:
+        """Keep the legacy metrics shape while preventing cross-domain calculations."""
+        is_generic = selected_module["id"] == "generic"
+        return {
+            "dataset_id": dataset_id,
+            "total_rows": len(frame.index),
+            "selected_module": selected_module,
+            "available_fields": available_fields,
+            "analysis_plan": analysis_plan,
+            "generic_analysis": engine.build_generic_analysis(frame) if is_generic else None,
+            "sales_amount": None,
+            "growth_rate": None,
+            "completion_rate": None,
+            "top_regions": [],
+            "region_ranking": [],
+            "highest_sales_region": None,
+            "lowest_sales_region": None,
+            "region_performance": [],
+            "sales_volatility": None,
+            "order_count": None,
+            "product_quantity": [],
+        }
 
     @staticmethod
     def _is_supported(plan_by_id: dict[str, dict[str, object]], capability_id: str) -> bool:

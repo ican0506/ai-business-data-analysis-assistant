@@ -26,6 +26,12 @@ storage/reports/*
 !storage/reports/.gitkeep
 *.log
 
+# Frontend dependencies and generated artifacts
+node_modules/
+frontend/vue-app/dist/
+frontend/vue-app/coverage/
+coverage/
+
 # IDE and OS files
 .idea/
 .vscode/

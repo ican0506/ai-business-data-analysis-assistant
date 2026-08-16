@@ -1,4 +1,5 @@
 const STORAGE_KEY = 'ai_insight_dataset_history'
+const ACTIVE_DATASET_KEY = 'ai_insight_active_dataset_id'
 
 export function loadDatasetHistory() {
   try {
@@ -24,4 +25,13 @@ export function updateDatasetRecord(id, patch) {
   const records = loadDatasetHistory().map((item) => (item.id === id ? { ...item, ...patch } : item))
   save(records)
   return records
+}
+
+export function getActiveDatasetId() {
+  const id = Number(localStorage.getItem(ACTIVE_DATASET_KEY))
+  return Number.isInteger(id) && id > 0 ? id : null
+}
+
+export function setActiveDatasetId(id) {
+  if (id !== null && id !== undefined) localStorage.setItem(ACTIVE_DATASET_KEY, String(id))
 }

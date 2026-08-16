@@ -8,7 +8,7 @@ import AnalysisLoading from '../components/reports/AnalysisLoading.vue'
 import AiSummaryCard from '../components/reports/AiSummaryCard.vue'
 import BusinessSuggestion from '../components/reports/BusinessSuggestion.vue'
 import RiskAnalysisPanel from '../components/reports/RiskAnalysisPanel.vue'
-import { loadDatasetHistory } from '../utils/datasetHistory'
+import { getActiveDatasetId, loadDatasetHistory } from '../utils/datasetHistory'
 import { loadAnalysisResult, saveAnalysisResult } from '../utils/analysisHistory'
 
 const route = useRoute()
@@ -18,7 +18,7 @@ const cachedResult = ref(null)
 const records = ref(loadDatasetHistory())
 
 const selectedDataset = computed(() => {
-  const queryId = Number(route.query.datasetId)
+  const queryId = Number(route.query.datasetId) || getActiveDatasetId()
   return records.value.find((item) => item.id === queryId) || records.value[0] || null
 })
 const report = computed(() => cachedResult.value?.report || null)

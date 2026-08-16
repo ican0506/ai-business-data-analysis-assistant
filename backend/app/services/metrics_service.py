@@ -9,6 +9,7 @@ from app.models.dataset import Dataset
 from app.models.dataset_cleaning import DatasetCleaningRun
 from app.services.analysis_engine import AnalysisEngine
 from app.services.field_mapping_override_service import FieldMappingOverrideService
+from app.services.inventory_analyzer import InventoryAnalyzer
 from app.services.student_score_analyzer import StudentScoreAnalyzer
 
 
@@ -97,6 +98,7 @@ class MetricsService:
             "field_mapping": field_mapping,
             "generic_analysis": None,
             "student_score_analysis": None,
+            "inventory_analysis": None,
             "sales_amount": self._summary(sales) if sales is not None else None,
             "growth_rate": (
                 self._growth_rate(analysis_frame, sales)
@@ -136,6 +138,7 @@ class MetricsService:
         """Keep the legacy metrics shape while preventing cross-domain calculations."""
         is_generic = selected_module["id"] == "generic"
         is_student_score = selected_module["id"] == "student_score"
+        is_inventory = selected_module["id"] == "inventory"
         return {
             "dataset_id": dataset_id,
             "total_rows": len(frame.index),
@@ -147,6 +150,11 @@ class MetricsService:
             "student_score_analysis": (
                 StudentScoreAnalyzer().analyze(frame, analysis_plan)
                 if is_student_score
+                else None
+            ),
+            "inventory_analysis": (
+                InventoryAnalyzer().analyze(frame, analysis_plan)
+                if is_inventory
                 else None
             ),
             "sales_amount": None,

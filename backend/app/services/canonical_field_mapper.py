@@ -28,8 +28,21 @@ STUDENT_SCORE_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     "exam_name": ("考试", "考试名称", "测试名称", "exam name", "exam_name"),
     "exam_date": ("考试日期", "测试日期", "exam date", "exam_date"),
 }
+INVENTORY_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
+    "product_id": ("商品编号", "产品编号", "SKU", "sku", "product id", "product_id"),
+    "product_name": ("商品名称", "产品名称", "商品", "产品", "product name", "product_name"),
+    "category": ("分类", "商品分类", "产品分类", "category"),
+    "stock_quantity": ("库存", "库存数量", "当前库存", "库存量", "stock", "stock quantity", "stock_quantity"),
+    "safety_stock": ("安全库存", "最低库存", "库存下限", "safety stock", "safety_stock"),
+    "unit_cost": ("成本", "单位成本", "单价成本", "unit cost", "unit_cost"),
+    "warehouse": ("仓库", "仓库名称", "库房", "warehouse"),
+    "supplier": ("供应商", "supplier"),
+    "inbound_quantity": ("入库数量", "入库量", "inbound quantity", "inbound_quantity"),
+    "outbound_quantity": ("出库数量", "出库量", "outbound quantity", "outbound_quantity"),
+    "inventory_date": ("库存日期", "盘点日期", "inventory date", "inventory_date"),
+}
 KNOWN_CANONICAL_FIELDS: tuple[str, ...] = tuple(
-    {**ORDER_FIELD_ALIASES, **STUDENT_SCORE_FIELD_ALIASES}
+    {**ORDER_FIELD_ALIASES, **STUDENT_SCORE_FIELD_ALIASES, **INVENTORY_FIELD_ALIASES}
 )
 
 class CanonicalFieldMapper:
@@ -37,8 +50,10 @@ class CanonicalFieldMapper:
 
     ORDER_ALIASES = ORDER_FIELD_ALIASES
     STUDENT_SCORE_ALIASES = STUDENT_SCORE_FIELD_ALIASES
+    INVENTORY_ALIASES = INVENTORY_FIELD_ALIASES
 
     def __init__(self) -> None:
+        self._ambiguous_aliases: dict[str, tuple[str, ...]] = {}
         self._aliases = self._build_alias_index()
 
     def map_dataframe(
@@ -50,12 +65,12 @@ class CanonicalFieldMapper:
         source_columns = [str(column) for column in frame.columns]
         normalized_overrides = dict(overrides or {})
         self.validate_overrides(frame, normalized_overrides)
-        canonical_columns = {target for target in self._aliases.values() if target in source_columns}
+        canonical_columns = set(KNOWN_CANONICAL_FIELDS).intersection(source_columns)
         candidates: dict[str, list[str]] = {}
         recognized_columns: set[str] = set(canonical_columns).union(normalized_overrides)
 
         for source in source_columns:
-            target = self._aliases.get(self._normalize_header(source))
+            target = self._target_for_source(source, source_columns)
             if target is None:
                 continue
             recognized_columns.add(source)
@@ -137,13 +152,41 @@ class CanonicalFieldMapper:
                 normalized = self._normalize_header(alias)
                 existing = aliases.get(normalized)
                 if existing is not None and existing != target:
-                    raise ValueError(f"Ambiguous canonical alias: {alias}")
+                    self._ambiguous_aliases[normalized] = tuple(
+                        dict.fromkeys((*self._ambiguous_aliases.get(normalized, (existing,)), target))
+                    )
+                    aliases.pop(normalized, None)
+                    continue
                 aliases[normalized] = target
         return aliases
 
     @classmethod
     def _all_aliases(cls) -> dict[str, tuple[str, ...]]:
-        return {**cls.ORDER_ALIASES, **cls.STUDENT_SCORE_ALIASES}
+        return {**cls.ORDER_ALIASES, **cls.STUDENT_SCORE_ALIASES, **cls.INVENTORY_ALIASES}
+
+    def _target_for_source(self, source: str, source_columns: list[str]) -> str | None:
+        normalized = self._normalize_header(source)
+        target = self._aliases.get(normalized)
+        if target is not None:
+            return target
+        candidates = self._ambiguous_aliases.get(normalized)
+        if not candidates:
+            return None
+        static_targets = {
+            self._aliases.get(self._normalize_header(column))
+            for column in source_columns
+        }
+        has_inventory_context = bool(
+            static_targets.intersection({"product_id", "stock_quantity", "safety_stock", "unit_cost", "warehouse", "supplier", "inbound_quantity", "outbound_quantity", "inventory_date"})
+        )
+        has_order_context = bool(
+            static_targets.intersection({"order_id", "quantity", "unit_price", "sales_amount", "customer_id", "region", "status", "date", "target_amount"})
+        )
+        if has_inventory_context and not has_order_context and "product_name" in candidates:
+            return "product_name"
+        if "product" in candidates:
+            return "product"
+        return None
 
     @classmethod
     def _ordered_targets(cls) -> tuple[str, ...]:

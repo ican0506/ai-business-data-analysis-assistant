@@ -95,6 +95,75 @@ def student_metrics(**analysis_overrides: object) -> dict:
     }
 
 
+def inventory_analysis_plan(*supported_ids: str) -> list[dict]:
+    capability_ids = (
+        "inventory_count",
+        "stock_summary",
+        "low_stock_analysis",
+        "inventory_value",
+        "category_stock",
+        "warehouse_stock",
+        "supplier_stock",
+        "inventory_flow",
+        "inventory_trend",
+    )
+    return [
+        {
+            "id": capability_id,
+            "name": capability_id,
+            "supported": capability_id in supported_ids,
+            "missing_fields": [] if capability_id in supported_ids else ["missing_field"],
+            "reason": None if capability_id in supported_ids else "缺少所需字段",
+        }
+        for capability_id in capability_ids
+    ]
+
+
+def inventory_metrics(**analysis_overrides: object) -> dict:
+    inventory_analysis = {
+        "inventory_count": 3,
+        "stock_summary": {
+            "count": 2,
+            "total": 35.0,
+            "average": 17.5,
+            "maximum": 30.0,
+            "minimum": 5.0,
+            "median": 17.5,
+        },
+        "low_stock_analysis": [
+            {"product_id": "P001", "product_name": "商品A", "stock_quantity": 5.0, "safety_stock": 10.0, "shortage": 5.0}
+        ],
+        "inventory_value": {"count": 2, "total": 460.0, "average": 230.0},
+        "category_stock": [{"name": "电子", "value": 35.0}],
+        "warehouse_stock": [{"name": "郑州仓", "value": 35.0}],
+        "supplier_stock": [],
+        "inventory_flow": None,
+        "inventory_trend": [],
+    }
+    inventory_analysis.update(analysis_overrides)
+    supported_ids = tuple(
+        capability_id
+        for capability_id, value in inventory_analysis.items()
+        if value is not None and value != []
+    )
+    return {
+        "total_rows": 3,
+        "selected_module": {"id": "inventory", "name": "库存分析"},
+        "available_fields": ["product_id", "stock_quantity", "safety_stock", "unit_cost", "warehouse"],
+        "analysis_plan": inventory_analysis_plan(*supported_ids),
+        "inventory_analysis": inventory_analysis,
+        "sales_amount": None,
+        "completion_rate": None,
+        "growth_rate": None,
+        "top_regions": [],
+        "region_performance": [],
+        "sales_volatility": None,
+        "order_count": None,
+        "product_quantity": [],
+        "student_score_analysis": None,
+    }
+
+
 def test_analyze_metrics_returns_business_insight_json() -> None:
     metrics = {
         "total_rows": 2,
@@ -295,3 +364,38 @@ def test_deepseek_failure_returns_rule_based_fallback(monkeypatch) -> None:
     )
 
     assert result is fallback
+
+
+def test_inventory_fallback_uses_only_real_inventory_metrics() -> None:
+    insight = AIAnalysisService().analyze_metrics(inventory_metrics())
+
+    assert insight["mode"] == "rule_based"
+    assert "库存总量 35.0" in insight["summary"]
+    assert "库存价值总计 460.0" in insight["summary"]
+    assert "低库存" in insight["report"]
+    assert "销售额" not in insight["report"]
+    assert "完成率" not in insight["report"]
+    assert insight["analysis_context"]["selected_module"]["id"] == "inventory"
+    assert insight["analysis_context"]["supported_analyses"]["inventory_count"] == 3
+
+
+def test_inventory_deepseek_payload_and_prompt_exclude_order_metrics(monkeypatch) -> None:
+    captured: dict[str, str] = {}
+
+    class SuccessfulCompletions:
+        def create(self, **kwargs):
+            captured["prompt"] = kwargs["messages"][0]["content"]
+            return SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content='{"summary": "库存摘要"}'))]
+            )
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SuccessfulCompletions()))
+    monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(OpenAI=lambda **_kwargs: client))
+    metrics = inventory_metrics()
+    context = AIAnalysisService.build_analysis_context(metrics)
+    result = AIAnalysisService._generate_with_deepseek(metrics, context, {"mode": "rule_based"})
+
+    assert result["mode"] == "deepseek"
+    assert "inventory_analysis" in captured["prompt"]
+    assert "sales_amount" not in captured["prompt"]
+    assert "不得推断库存周转率" in captured["prompt"]

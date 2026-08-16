@@ -2,6 +2,7 @@ from collections.abc import Sequence
 
 from app.analysis_modules.base import AnalysisCapability, AnalysisModule
 from app.analysis_modules.generic import GenericModule
+from app.analysis_modules.inventory import InventoryModule
 from app.analysis_modules.order import ORDER_ANALYSIS_CAPABILITIES, OrderModule
 from app.analysis_modules.registry import ModuleRegistry
 from app.analysis_modules.student_score import StudentScoreModule
@@ -64,6 +65,14 @@ def test_registry_selects_order_for_reliable_order_signals() -> None:
     selected = registry.select_module({"order_id", "product", "quantity", "unit_price"})
 
     assert selected.id == "order"
+
+
+def test_registry_selects_inventory_only_for_reliable_inventory_signals() -> None:
+    registry = ModuleRegistry([OrderModule(), StudentScoreModule(), InventoryModule(), GenericModule()])
+
+    assert registry.select_module({"product_id", "stock_quantity"}).id == "inventory"
+    assert registry.select_module({"warehouse", "stock_quantity"}).id == "inventory"
+    assert registry.select_module({"product_name"}).id == "generic"
 
 
 def test_registry_selects_student_score_for_reliable_score_signals() -> None:

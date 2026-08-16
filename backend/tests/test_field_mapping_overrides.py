@@ -142,6 +142,32 @@ def test_put_mapping_persists_order_override_and_keeps_derived_sales(client: Tes
     assert metrics.json()["data"]["sales_amount"]["total"] == 80.0
 
 
+def test_put_mapping_persists_inventory_override_and_metrics_uses_it(client: TestClient) -> None:
+    headers = auth_headers(client)
+    dataset_id = upload_and_clean(
+        client,
+        headers,
+        "SKU编码,现存数量,警戒库存\nSKU-1,5,10\nSKU-2,20,10\n",
+        "inventory.csv",
+    )
+
+    response = client.put(
+        f"/api/v1/datasets/{dataset_id}/field-mapping",
+        headers=headers,
+        json={"overrides": {"SKU编码": "product_id", "现存数量": "stock_quantity", "警戒库存": "safety_stock"}},
+    )
+    metrics = client.get(f"/api/v1/datasets/{dataset_id}/metrics", headers=headers)
+
+    assert response.status_code == 200
+    data = metrics.json()["data"]
+    assert data["selected_module"]["id"] == "inventory"
+    assert data["inventory_analysis"]["inventory_count"] == 2
+    assert data["inventory_analysis"]["stock_summary"]["total"] == 25.0
+    assert data["inventory_analysis"]["low_stock_analysis"][0]["product_id"] == "SKU-1"
+    assert data["sales_amount"] is None
+    assert data["student_score_analysis"] is None
+
+
 def test_put_rejects_invalid_target_missing_source_and_duplicate_target(client: TestClient) -> None:
     headers = auth_headers(client)
     dataset_id = upload_and_clean(client, headers, "总评,平时成绩\n90,80\n", "invalid.csv")

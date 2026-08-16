@@ -34,6 +34,8 @@ class DatasetService:
 
         try:
             frame = self._read_dataframe(content, suffix)
+            if frame.empty:
+                raise ValueError("数据文件不包含可分析的数据行")
             columns = self._build_columns(frame)
             dataset = Dataset(
                 owner_id=owner_id,

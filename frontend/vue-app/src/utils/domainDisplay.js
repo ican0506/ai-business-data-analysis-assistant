@@ -16,10 +16,12 @@ export function resolveDomainDisplay(selectedModule) {
 }
 
 export function showMetricValue(value) {
-  return value === null || value === undefined ? '—' : String(value)
+  if (value === null || value === undefined) return '—'
+  return typeof value === 'number' && !Number.isFinite(value) ? '—' : String(value)
 }
 
 export function formatNumber(value, maximumFractionDigits = 2) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) return '—'
-  return new Intl.NumberFormat('zh-CN', { maximumFractionDigits }).format(Number(value))
+  const number = Number(value)
+  if (value === null || value === undefined || !Number.isFinite(number)) return '—'
+  return new Intl.NumberFormat('zh-CN', { maximumFractionDigits }).format(number)
 }

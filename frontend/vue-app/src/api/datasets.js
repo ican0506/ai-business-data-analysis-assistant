@@ -41,5 +41,11 @@ export async function downloadDatasetReport(datasetId, reportType) {
   const path = reportType === 'excel'
     ? `/api/v1/datasets/${datasetId}/reports/excel`
     : `/api/v1/datasets/${datasetId}/reports/${reportType}`
-  return http.get(path, { responseType: 'blob' })
+  const response = await http.get(path, { responseType: 'blob', returnRawResponse: true })
+  const disposition = response.headers['content-disposition'] || ''
+  const match = disposition.match(/filename\*?=(?:UTF-8''|\")?([^;\"]+)/i)
+  return {
+    blob: response.data,
+    filename: match ? decodeURIComponent(match[1].trim()) : null,
+  }
 }

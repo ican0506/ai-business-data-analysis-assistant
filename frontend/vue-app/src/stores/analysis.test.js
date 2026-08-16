@@ -41,4 +41,23 @@ describe('当前数据集分析状态', () => {
     expect(getFieldMapping).toHaveBeenCalledTimes(2)
     expect(getDatasetMetrics).toHaveBeenCalledTimes(2)
   })
+
+  it('后发起的数据集加载结果不会被先前请求覆盖', async () => {
+    let resolveFirst
+    getFieldMapping
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve }))
+      .mockResolvedValueOnce({ overrides: {}, field_mapping: { mappings: [] } })
+    getDatasetMetrics
+      .mockResolvedValueOnce({ selected_module: { id: 'order' } })
+      .mockResolvedValueOnce({ selected_module: { id: 'inventory' } })
+
+    const store = useAnalysisStore()
+    const firstRequest = store.load(1)
+    await store.load(2)
+    resolveFirst({ overrides: {}, field_mapping: { mappings: [] } })
+    await firstRequest
+
+    expect(store.datasetId).toBe(2)
+    expect(store.domain.id).toBe('inventory')
+  })
 })

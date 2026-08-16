@@ -1,8 +1,12 @@
 import json
+import logging
 
 from app.core.config import get_settings
 from app.models.dataset import Dataset
 from app.services.metrics_service import MetricsService
+
+
+logger = logging.getLogger(__name__)
 
 
 class AIAnalysisService:
@@ -421,7 +425,13 @@ class AIAnalysisService:
             f"真实指标：{AIAnalysisService._deepseek_metrics_payload(metrics, analysis_context)}"
         )
         try:
-            response = OpenAI(api_key=settings.llm_api_key, base_url=settings.llm_base_url).chat.completions.create(
+            client = OpenAI(
+                api_key=settings.llm_api_key,
+                base_url=settings.llm_base_url,
+                timeout=settings.llm_timeout_seconds,
+                max_retries=0,
+            )
+            response = client.chat.completions.create(
                 model=settings.llm_model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.2,
@@ -429,5 +439,11 @@ class AIAnalysisService:
             )
             generated = json.loads(response.choices[0].message.content or "{}")
             return {**fallback, **generated, "mode": "deepseek"}
-        except Exception:
+        except Exception as error:
+            logger.warning(
+                "LLM analysis failed; using rule-based fallback provider=%s model=%s error_type=%s",
+                settings.llm_provider,
+                settings.llm_model,
+                type(error).__name__,
+            )
             return fallback

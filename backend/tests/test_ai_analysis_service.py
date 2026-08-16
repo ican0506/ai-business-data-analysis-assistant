@@ -366,6 +366,41 @@ def test_deepseek_failure_returns_rule_based_fallback(monkeypatch) -> None:
     assert result is fallback
 
 
+def test_deepseek_timeout_uses_configured_client_timeout_without_retries(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class TimeoutCompletions:
+        def create(self, **_kwargs):
+            raise TimeoutError("LLM timed out")
+
+    def create_client(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(chat=SimpleNamespace(completions=TimeoutCompletions()))
+
+    monkeypatch.setattr(
+        "app.services.ai_analysis_service.get_settings",
+        lambda: SimpleNamespace(
+            llm_provider="deepseek",
+            llm_api_key="test-key",
+            llm_base_url="https://api.deepseek.com",
+            llm_model="deepseek-chat",
+            llm_timeout_seconds=25,
+        ),
+    )
+    monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(OpenAI=create_client))
+    fallback = {"mode": "rule_based", "summary": "安全回退"}
+
+    result = AIAnalysisService._generate_with_deepseek(
+        {"total_rows": 0},
+        {"supported_analyses": {}, "skipped_analyses": []},
+        fallback,
+    )
+
+    assert captured["timeout"] == 25
+    assert captured["max_retries"] == 0
+    assert result is fallback
+
+
 def test_inventory_fallback_uses_only_real_inventory_metrics() -> None:
     insight = AIAnalysisService().analyze_metrics(inventory_metrics())
 

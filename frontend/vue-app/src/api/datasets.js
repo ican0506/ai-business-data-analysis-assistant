@@ -18,7 +18,10 @@ export async function cleanDataset(datasetId) {
 }
 
 export async function analyzeDataset(datasetId) {
-  const response = await http.post(`/api/v1/datasets/${datasetId}/ai-analysis`)
+  const response = await http.post(`/api/v1/datasets/${datasetId}/ai-analysis`, null, {
+    timeout: 60000,
+    timeoutMessage: 'AI 分析请求超时，请稍后重试。',
+  })
   return response.data
 }
 

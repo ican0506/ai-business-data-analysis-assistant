@@ -2,12 +2,12 @@
 
 ## Docker Compose
 
-1. 在根目录复制 `.env.example` 为 `.env`。
-2. 设置 `MYSQL_ROOT_PASSWORD`，可选设置 `LLM_PROVIDER=deepseek`、`LLM_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL`。
-3. 执行 `docker compose up --build -d`。
-4. 使用 `docker compose ps` 检查 `mysql` 与 `backend` 状态，访问 `http://127.0.0.1:8000/docs`。
+1. 在项目根目录复制 `.env.example` 为 `.env`，设置 `MYSQL_ROOT_PASSWORD` 与至少 32 位的 `JWT_SECRET_KEY`。
+2. 不使用大模型时设置 `LLM_PROVIDER=rule_based` 并保持 `LLM_API_KEY` 为空；使用 DeepSeek 时再填写密钥、模型和基础地址。
+3. 先运行 `docker compose config` 检查变量是否齐全，再执行 `docker compose up --build -d`。
+4. 使用 `docker compose ps` 检查 `mysql`、`backend`、`nginx` 状态。默认访问前端 `http://localhost/`，Swagger 为 `http://localhost:8001/docs`。
 
-MySQL 映射到主机 `3307`，后端映射 `8000`。停止但保留数据：`docker compose down`；不要随意使用 `-v`，它会删除数据库 volume。
+默认端口为：Nginx `80`、后端 `8001`、MySQL `3308`；均可通过根目录 `.env` 覆盖。`./storage` 挂载到后端容器的 `/storage`，用于上传文件和清洗结果。停止但保留数据使用 `docker compose down`；不要随意使用 `-v`，它会删除 MySQL volume。
 
 ## Linux 建议
 

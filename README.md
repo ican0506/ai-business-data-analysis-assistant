@@ -1,182 +1,173 @@
 # AI 智能数据分析助手
 
-## 多领域分析编排
+面向企业运营场景的全栈数据分析平台。上传 CSV/XLSX 后，系统依次完成清洗、字段识别、领域匹配、Pandas 指标计算、AI 解释及 Excel/Word/PDF 报告导出。
 
-### Canonical Field Mapping（内存分析字段映射）
+## 核心特点
 
-分析链路会先将清洗后的原始字段复制为内存分析副本，再依次执行：
+- CSV/XLSX 上传、清洗记录、JWT 鉴权和操作审计
+- `CanonicalFieldMapper` 自动字段映射，支持数据集级人工 override
+- `AnalysisEngine + AnalysisPlanner` 选择可执行分析能力
+- Python / Pandas 计算真实指标；AI 只解释已有结构化结果
+- Vue3 动态 Dashboard、字段映射、AI 报告与下载中心
+- DeepSeek 可选接入，调用失败自动降级为规则引擎
+- Docker Compose：MySQL、FastAPI、Nginx/Vue
 
-```text
-原始字段 → CanonicalFieldMapper → ModuleRegistry → AnalysisPlanner → Analyzer → AI / Report
-```
-
-- 当前支持确定性的 Order、StudentScore 与 Inventory 中英文别名：例如 `订单编号 → order_id`、`商品名称 → product`、`学号 → student_id`、`成绩 → score`、`库存数量 → stock_quantity`、`安全库存 → safety_stock`。
-- 支持按数据集保存字段映射覆盖（override）：覆盖规则优先级为“用户覆盖 > 自动别名 > 保留原始字段”。覆盖只作用于内存分析副本，不会改写原始上传文件或清洗后的 CSV。
-- 可通过 `GET /api/v1/datasets/{id}/field-mapping` 预览当前自动映射与覆盖结果，并使用 `PUT /api/v1/datasets/{id}/field-mapping` 全量保存覆盖。例如：`{"overrides":{"总评":"score","课程名称":"subject"}}`；传入 `{"overrides":{}}` 可清空该数据集的全部覆盖并恢复自动映射。
-- 覆盖保存会校验当前最新清洗文件的真实列名、canonical 目标白名单、同目标重复映射和覆盖 canonical 原列等冲突，并在单一数据库事务中完成替换。不同数据集的覆盖彼此隔离。
-- 映射仅作用于内存中的 `DataFrame.copy()`；不会改写用户上传文件、原始 CSV 或清洗后的 CSV。
-- canonical 字段优先；canonical 与别名并存、或多个别名同时指向同一字段时会记录 `conflicts`，不会静默覆盖或合并数据。
-- 未识别字段会保留原名并写入 `unmapped_columns`。
-- 目前只使用精确、可预测的 alias 规则（NFKC、大小写、空白、`-` / `_` 标准化），不使用 AI、模糊匹配或 embedding。
-
-清洗后的 `DataFrame` 会先由 `AnalysisEngine` 识别可用字段，再通过 `ModuleRegistry`
-选择 `OrderModule`、`StudentScoreModule`、`InventoryModule` 或 `GenericModule`，最后交给
-`AnalysisPlanner` 生成当前数据集可执行的 `analysis_plan`。
-
-- `OrderModule` 继续由 `MetricsService` 执行既有订单、销售、区域等真实指标计算；
-- `StudentScoreModule` 由 `StudentScoreAnalyzer` 在能力规划通过后计算学生数量、成绩概览、学科/班级/学生聚合与考试趋势；
-- `InventoryModule` 由 `InventoryAnalyzer` 在能力规划通过后计算商品数量、库存概览、低库存明细、库存价值及分类/仓库/供应商/流动/趋势汇总；
-- `GenericModule` 返回真实的行数、列画像和缺失值统计，不伪造订单或销售数据。
-
-因此，非订单数据会保留既有指标返回字段，但以 `None` 或空列表表达“不适用”，不会把缺失业务指标写成 `0`。
-
-## 当前开发进度
-
-Vue 前端已接入当前数据集的真实 `metrics`、`selected_module` 与字段映射接口：数据驾驶舱会根据 `order`、`student_score`、`inventory`、`generic` 动态展示对应的指标、表格和 ECharts 图表。前端不会将后端的 `null` / 空数组转换为 `0`，未知领域安全回退为通用数据展示。
-
-数据集管理页与分析工作区均提供“字段映射”入口，可查看 automatic、override、unmapped 与 conflict 状态；用户选择受限的 canonical target 后，前端使用 `PUT /api/v1/datasets/{id}/field-mapping` 全量保存 override，并自动重新读取映射和 metrics，因此领域识别和图表无需刷新页面即可更新。“恢复自动映射”会发送空 overrides。当前未实现前端自动字段推荐、模糊匹配、LLM 映射、库存预测或前端自行计算业务指标。
-
-已完成 Analysis Planner 与 MetricsService 的能力驱动指标计算：系统会在清洗后的数据中识别可用字段，返回 `available_fields` 与 `analysis_plan`，并在字段缺失时以 `null` 或空列表表达“当前无法分析”，不会把缺字段误报为数值 `0`。
-
-当不存在 `sales_amount`、但存在有效的 `unit_price` 与 `quantity` 时，系统只在内存分析副本中派生销售额，不会改写已清洗的 CSV 文件。
-
-AI 分析与 Excel、Word、PDF 报告同样基于 `analysis_plan` 动态输出：只描述 Python 已真实计算的指标；缺失字段会进入“本次未分析指标”，不会被解释为数值 `0`。相反，已计算出的销售额总计为 `0` 会被保留并如实展示。DeepSeek 仅接收结构化指标与能力上下文，调用异常时自动降级到同一套规则引擎结论。
-
-学生成绩数据会由 Pandas 计算学生数量、有效成绩数量、平均分、中位数、最高/最低分，以及可用的学科、班级、学生和考试趋势聚合。AI 只解释 `student_score_analysis` 中已计算的真实结果，不假设及格线、不推断及格率/优秀率/GPA，也不重算原始成绩。Excel、Word、PDF 会按真实存在的成绩指标和表格动态输出；本阶段**暂未实现成绩图表**。
-
-库存数据会由 Pandas 计算 `inventory_count`、`stock_summary`、`low_stock_analysis`、`inventory_value`、分类/仓库/供应商库存、库存流动和库存趋势。无效库存、成本、入库或出库值会被忽略，真实库存 `0` 会保留为真实值；低库存只在当前库存与安全库存均可计算时输出。AI 仅解释 `inventory_analysis` 中已计算的结果，不推断库存周转率、采购周期、补货天数、需求预测、缺货概率、EOQ 或 ABC 分类。Excel、Word、PDF 以概览与明细表形式输出库存结果；本阶段**不新增库存图表**。
-
-当前已建立轻量领域模块框架：`ModuleRegistry` 根据 canonical fields 的确定性规则，在 `OrderModule`、`StudentScoreModule`、`InventoryModule` 与 `GenericModule` 中选择模块。学生成绩与库存分析均支持 Python 指标计算、AI 动态解释与 Excel/Word/PDF 动态报告；无效数值会被忽略，真实 `0` 会保留。暂不包含及格率、优秀率、GPA、复杂排名、库存预测、EOQ、ABC 分类、库存周转率或库存图表。通用模块的数值、分类、日期能力暂作为元数据声明，待后续引入字段类型感知后再接入 Planner。
-
-面向企业销售运营场景的全栈数据分析平台。用户上传 Excel/CSV 后，可完成数据解析、清洗、指标分析、可视化、AI 业务洞察与多格式报告导出。
-
-## 项目价值
-
-企业运营数据常分散在表格中，人工清洗和复盘成本高。本项目提供从上传到报告的闭环，帮助运营/销售人员快速识别完成率风险、区域差异和增长趋势，并形成可执行建议。
-
-## 核心功能
-
-- JWT 注册、登录、路由鉴权与 Token 失效处理
-- Excel/CSV 上传、字段预览与本机数据集展示记录
-- 空行/重复行清理、日期/金额标准化与清洗审计
-- 总量、均值、极值、增长率、完成率、区域 TOP 指标
-- Vue3 + ECharts 数据驾驶舱
-- DeepSeek / 规则引擎 AI 分析：摘要、异常、风险、建议
-- Excel、Word、PDF 实时报告导出
-- 操作审计日志、Docker Compose 部署与 Swagger 文档
-
-## 技术架构
+## 技术栈
 
 | 层级 | 技术 |
 | --- | --- |
-| Frontend | Vue3、Vite、Pinia、Vue Router、Axios、Element Plus、ECharts |
-| Backend | Python、FastAPI、SQLAlchemy、Pandas、NumPy、OpenPyXL |
-| Database | MySQL 8 |
-| AI | DeepSeek API（兼容 OpenAI SDK）+ Prompt Engineering + 规则降级 |
-| Deployment | Docker、Docker Compose、Linux |
+| 前端 | Vue 3、Vite、Pinia、Vue Router、Axios、Element Plus、ECharts |
+| 后端 | FastAPI、SQLAlchemy、Pandas、NumPy、OpenPyXL、python-docx、ReportLab |
+| 数据库 | MySQL 8 |
+| AI | DeepSeek（OpenAI-compatible）+ 规则 fallback |
+| 部署 | Docker、Docker Compose、Nginx |
+
+## 系统架构
 
 ```mermaid
 flowchart TD
-  U[企业用户] --> F[Vue3 前端]
-  F --> A[FastAPI 接口层]
-  A --> S[业务服务层\n上传 清洗 指标 报告]
-  S --> M[(MySQL)]
-  S --> L[AI 分析服务\nDeepSeek / 规则引擎]
-  L --> A
+  U[用户] --> V[Vue 3 前端]
+  V --> F[FastAPI 接口层]
+  F --> C[清洗与字段映射]
+  C --> E[AnalysisEngine / AnalysisPlanner]
+  E --> P[Pandas 指标计算]
+  P --> A[AI 解释服务]
+  P --> R[Excel / Word / PDF]
+  F --> M[(MySQL)]
 ```
 
-详细说明见 [架构文档](docs/architecture.md)。
+## 当前支持领域
 
-## 页面截图
-
-> 将实际截图放入 `docs/images/` 后替换下列占位路径；请勿提交含业务敏感数据的截图。
-
-| 登录页 | 数据驾驶舱 |
+| 领域 | 输出 |
 | --- | --- |
-| `docs/images/login.png` | `docs/images/dashboard.png` |
-| 数据集管理 | AI 分析报告 |
-| `docs/images/datasets.png` | `docs/images/ai-analysis.png` |
-| 报告下载中心 |  |
-| `docs/images/download-center.png` |  |
+| Order | 订单数、销售额、商品销量、区域排行、趋势与完成率（字段可用时） |
+| StudentScore | 学生数、成绩概览、学科/班级/学生聚合、考试趋势（字段可用时） |
+| Inventory | 库存概览、低库存、库存价值、分类/仓库/供应商汇总（字段可用时） |
+| Generic | 行数、列画像、缺失值分析；是合法 fallback，不是系统错误 |
 
-## 快速启动
+`null` / `—` 表示不可分析或不适用，**不等于 0**；真实计算值为 `0` 会原样保留。Python / Pandas 是指标真值来源，AI 不计算或编造核心指标。
 
-### Docker（推荐）
+## 快速开始
 
-```powershell
-cd "D:\开发\python项目\AI智能数据分析助手"
-Copy-Item .env.example .env
-# 编辑 .env：至少设置 MYSQL_ROOT_PASSWORD；可选配置 DeepSeek
-docker compose up --build
+### 数据库与后端
+
+先创建空数据库，例如：
+
+```sql
+CREATE DATABASE ai_data_analysis DEFAULT CHARACTER SET utf8mb4;
 ```
 
-打开 <http://127.0.0.1:8000/docs>。停止服务：`docker compose down`。
-
-### 本地开发
-
-后端：
+复制 `backend/.env.example` 为 `backend/.env`，填写 MySQL 连接、JWT 随机密钥和可选 LLM 配置：
 
 ```powershell
 cd backend
-Copy-Item .env.example .env
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+uvicorn app.main:app --reload
 ```
 
-Vue 前端：
+Swagger：<http://127.0.0.1:8000/docs>
+
+首次启动会由 SQLAlchemy `Base.metadata.create_all()` 创建当前模型表。已有 MySQL 数据库可按顺序执行 `backend/sql/001_create_users_table.sql` 至 `backend/sql/005_create_dataset_field_mapping_overrides.sql`；项目未使用 Alembic，`005` 用于字段 override 表。
+
+`STORAGE_ROOT` 对应的上传和清洗目录会由应用运行时创建；运行数据不应提交到 Git。
+
+### 前端
 
 ```powershell
-cd frontend\vue-app
+cd frontend/vue-app
+Copy-Item .env.example .env.local
 npm install
 npm run dev
 ```
 
-前端默认通过 Vite 配置将 `/api` 代理到 FastAPI。更多见 [部署文档](docs/deployment.md)。
+默认地址：<http://127.0.0.1:5173>。Axios 仅从 `VITE_API_BASE_URL` 读取 API 地址；留空时 Vite 的 `/api` 代理使用 `VITE_API_PROXY_TARGET`（默认 `http://127.0.0.1:8000`）。
 
-## 常用接口
-
-- `POST /api/v1/auth/register`、`POST /api/v1/auth/login`
-- `POST /api/v1/datasets/upload`
-- `POST /api/v1/datasets/{id}/clean`
-- `GET /api/v1/datasets/{id}/field-mapping`
-- `PUT /api/v1/datasets/{id}/field-mapping`
-- `GET /api/v1/datasets/{id}/metrics`
-- `POST /api/v1/datasets/{id}/ai-analysis`
-- `GET /api/v1/datasets/{id}/reports/{excel|word|pdf}`
-
-完整接口清单见 [API 文档](docs/api.md)，数据库说明见 [database.md](docs/database.md)。
-
-## 完整使用流程与演示数据
-
-1. 启动 MySQL 后启动 FastAPI 与 Vue 前端，使用“注册 / 登录”进入工作台。
-2. 在“数据集管理”上传 CSV 或 XLSX；空文件、仅表头文件、非 CSV/XLSX 或无法解析的文件会返回明确提示。
-3. 对上传结果执行“开始清洗”，随后进入“数据驾驶舱”查看自动领域识别和真实指标。
-4. 若自动识别不完整，在“字段映射”中保存用户覆盖；保存后无需刷新浏览器，驾驶舱会重新请求指标并切换领域。
-5. 在“AI 分析报告”生成洞察。DeepSeek 不可用时，系统会基于 Python 已计算的指标自动使用规则引擎降级，不影响指标查看与报告导出。
-6. 在“报告下载中心”导出 Excel、Word 或 PDF。下载以 HTTP `Content-Disposition` 的文件名为准；HTTP 错误或空文件不会创建损坏下载。
-
-可直接上传以下轻量演示数据：
-
-| 领域 | 文件 | 推荐字段 |
-| --- | --- | --- |
-| Order | `examples/order_sample.csv` | 订单编号、商品名称、数量、单价、区域、订单日期 |
-| StudentScore | `examples/student_score_sample.csv` | 学号、学生姓名、科目、成绩、班级、考试日期 |
-| Inventory | `examples/inventory_sample.csv` | 商品编号、商品名称、库存数量、安全库存、单位成本、仓库 |
-| Generic | `examples/generic_sample.csv` | 姓名、城市、备注 |
-
-### 指标语义约定
-
-- `null` / `—` 表示当前数据集缺少条件，指标**不可分析或不适用**；它不等于 0。
-- `0` 是 Python / Pandas 已真实计算出的数值，前端、AI 与报告会如实保留。
-- AI 不负责计算核心指标。订单、成绩、库存与通用分析的数值真值始终由 Python / Pandas 产生；AI 只解释这些结构化结果。
-- `Generic` 是预期的通用数据分析回退，而不是“识别失败”；它提供行数、列画像和缺失值统计，不伪造销售、成绩或库存指标。
-
-## 测试与安全
+### Docker Compose
 
 ```powershell
-cd frontend\vue-app
-npm test
+Copy-Item .env.example .env
+# 编辑 .env：设置 MYSQL_ROOT_PASSWORD 和 JWT_SECRET_KEY
+docker compose config
+docker compose up --build -d
+```
+
+默认入口：前端 <http://localhost/>，Swagger <http://localhost:8001/docs>，MySQL 主机端口 `3308`。使用 `docker compose down` 停止并保留数据；不要随意执行 `docker compose down -v`。
+
+## 环境变量
+
+根目录 `.env.example` 仅供 Docker Compose：
+
+| 变量 | 用途 |
+| --- | --- |
+| `MYSQL_ROOT_PASSWORD` | MySQL root 密码，同时传给后端 |
+| `JWT_SECRET_KEY` | JWT 签名密钥，生产环境使用至少 32 位随机值 |
+| `MYSQL_DATABASE`、`MYSQL_PORT` | Compose 数据库名和端口 |
+| `FRONTEND_PORT`、`BACKEND_PORT` | Nginx 与 FastAPI 主机端口 |
+| `CORS_ALLOWED_ORIGINS` | 允许凭据访问的浏览器 Origin 白名单 |
+| `LLM_PROVIDER`、`LLM_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL` | 可选大模型配置 |
+
+`backend/.env.example` 用于本地后端，包含 MySQL、存储、上传大小、JWT 和 LLM 变量。`frontend/vue-app/.env.example` 用于前端 API 地址和 Vite 代理。所有 `.env` 文件均被 Git 忽略。
+
+## 使用流程
+
+注册 / 登录 → 上传 CSV/XLSX → 清洗 → 自动映射与领域识别 → 必要时人工 override → 动态 Dashboard → AI 分析 → 导出 Excel/Word/PDF。
+
+字段 override 使用 `PUT /api/v1/datasets/{id}/field-mapping` 全量替换：
+
+```json
+{"overrides": {"学生编号": "student_id", "课程名": "subject", "总评": "score"}}
+```
+
+`{"overrides": {}}` 可恢复自动映射。覆盖优先级为用户 override > 自动 alias > 原始字段，且只作用于内存分析副本，不改写原始或清洗文件。
+
+## 示例数据
+
+`examples/` 中四份 UTF-8、无隐私 CSV 可直接上传：
+
+- `order_sample.csv`：订单编号、商品名称、数量、单价、区域、订单日期
+- `student_score_sample.csv`：学号、学生姓名、科目、成绩、班级、考试日期
+- `inventory_sample.csv`：商品编号、商品名称、库存数量、安全库存、单位成本、仓库
+- `generic_sample.csv`：姓名、城市、备注
+
+## API、CORS 与目录
+
+FastAPI 内置 Swagger，开发环境访问 `/docs`。主要接口类别为认证、数据集、字段映射、指标、AI、报告与审计日志。
+
+CORS 使用 `CORS_ALLOWED_ORIGINS` 白名单并允许凭据，不使用 `*`。Docker Nginx 将 `/api/` 代理至 FastAPI。Docker 的 `./storage` 挂载到后端 `/storage`，用于上传与清洗结果。
+
+## 测试
+
+```powershell
+cd backend
+python -m pytest tests -q
+
+cd ../frontend/vue-app
+npm run test
 npm run build
 ```
 
-不要提交 `.env`、上传/导出文件、日志、`node_modules` 或任何 API Key。项目展示与面试材料见 [interview.md](docs/interview.md)。
+项目没有独立 lint 脚本。不要提交 `.env`、密钥、上传/清洗/报告文件、日志、虚拟环境、`node_modules`、`dist` 或 `coverage`。
+
+## 项目目录
+
+```text
+backend/                 FastAPI、领域服务、SQL 补丁、测试
+frontend/vue-app/        Vue 3 前端
+examples/                可直接演示的 CSV
+storage/                 运行数据（忽略实际内容）
+docs/                    架构、数据库、部署说明
+docker-compose.yml       MySQL + Backend + Nginx
+```
+
+## 已知限制
+
+- 暂不支持 fuzzy/embedding/LLM 自动字段映射。
+- 暂不支持库存预测、EOQ、ABC 分类、学生 GPA、自动业务规则推断或更多领域。
+- AI 不重算指标；外部模型失败时返回规则解释。
+- Compose 适合单机演示；真实生产仍需 HTTPS、备份、日志轮转和专用密钥管理。
+
+## 安全说明
+
+不要提交 API Key、数据库密码、JWT 密钥、个人 Token、上传文件或报告。仓库中的示例数据均为虚构演示数据。

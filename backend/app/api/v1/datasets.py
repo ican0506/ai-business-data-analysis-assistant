@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.api.v1.auth import get_current_user
 from app.db.session import get_db
 from app.models.dataset import Dataset
+from app.schemas.field_mapping import FieldMappingOverrideRequest
 from app.models.user import User
 from app.services.data_cleaning_service import DataCleaningService
 from app.services.dataset_service import DatasetService
@@ -14,6 +15,7 @@ from app.services.metrics_service import MetricsService
 from app.services.ai_analysis_service import AIAnalysisService
 from app.services.report_service import ReportService
 from app.services.operation_log_service import OperationLogService
+from app.services.field_mapping_override_service import FieldMappingOverrideService
 
 
 router = APIRouter(prefix="/api/v1/datasets", tags=["数据集"])
@@ -23,6 +25,7 @@ metrics_service = MetricsService()
 ai_analysis_service = AIAnalysisService()
 report_service = ReportService()
 operation_log_service = OperationLogService()
+field_mapping_override_service = FieldMappingOverrideService()
 
 
 @router.post("/upload", status_code=status.HTTP_201_CREATED)
@@ -61,6 +64,45 @@ def clean_dataset(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="数据清洗失败，请检查文件内容") from error
     operation_log_service.record(db, current_user.id, "DATASET_CLEAN", "dataset", dataset_id)
     return {"code": 0, "message": "数据清洗成功", "data": data}
+
+
+@router.get("/{dataset_id}/field-mapping")
+def get_field_mapping(
+    dataset_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    dataset = db.get(Dataset, dataset_id)
+    if dataset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="数据集不存在")
+    if dataset.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权查看此数据集")
+    try:
+        data = field_mapping_override_service.get_runtime_mapping(db, dataset)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    return {"code": 0, "message": "字段映射读取成功", "data": data}
+
+
+@router.put("/{dataset_id}/field-mapping")
+def replace_field_mapping(
+    dataset_id: int,
+    request: FieldMappingOverrideRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    dataset = db.get(Dataset, dataset_id)
+    if dataset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="数据集不存在")
+    if dataset.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权配置此数据集")
+    try:
+        field_mapping_override_service.replace_overrides(db, dataset, request.overrides)
+        data = field_mapping_override_service.get_runtime_mapping(db, dataset)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    operation_log_service.record(db, current_user.id, "DATASET_FIELD_MAPPING_UPDATE", "dataset", dataset_id)
+    return {"code": 0, "message": "字段映射保存成功", "data": data}
 
 
 @router.get("/{dataset_id}/metrics")

@@ -237,6 +237,7 @@ def test_chinese_order_headers_keep_derived_sales_calculation_on_mapped_frame() 
     assert metrics["field_mapping"]["mappings"][0] == {
         "source": "订单编号",
         "target": "order_id",
+        "method": "automatic",
     }
 
 

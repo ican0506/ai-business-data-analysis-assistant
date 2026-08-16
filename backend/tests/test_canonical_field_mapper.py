@@ -30,11 +30,11 @@ def test_maps_complete_chinese_student_score_headers_without_mutating_source() -
     ]
     assert metadata == {
         "mappings": [
-            {"source": "学号", "target": "student_id"},
-            {"source": "姓名", "target": "student_name"},
-            {"source": "科目", "target": "subject"},
-            {"source": "成绩", "target": "score"},
-            {"source": "班级", "target": "class_name"},
+                {"source": "学号", "target": "student_id", "method": "automatic"},
+                {"source": "姓名", "target": "student_name", "method": "automatic"},
+                {"source": "科目", "target": "subject", "method": "automatic"},
+                {"source": "成绩", "target": "score", "method": "automatic"},
+                {"source": "班级", "target": "class_name", "method": "automatic"},
         ],
         "unmapped_columns": ["备注"],
         "conflicts": [],

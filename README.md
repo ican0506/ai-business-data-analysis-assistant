@@ -10,7 +10,7 @@
 原始字段 → CanonicalFieldMapper → ModuleRegistry → AnalysisPlanner → Analyzer → AI / Report
 ```
 
-- 当前支持确定性的 Order 与 StudentScore 中英文别名：例如 `订单编号 → order_id`、`商品名称 → product`、`学号 → student_id`、`成绩 → score`。
+- 当前支持确定性的 Order、StudentScore 与 Inventory 中英文别名：例如 `订单编号 → order_id`、`商品名称 → product`、`学号 → student_id`、`成绩 → score`、`库存数量 → stock_quantity`、`安全库存 → safety_stock`。
 - 支持按数据集保存字段映射覆盖（override）：覆盖规则优先级为“用户覆盖 > 自动别名 > 保留原始字段”。覆盖只作用于内存分析副本，不会改写原始上传文件或清洗后的 CSV。
 - 可通过 `GET /api/v1/datasets/{id}/field-mapping` 预览当前自动映射与覆盖结果，并使用 `PUT /api/v1/datasets/{id}/field-mapping` 全量保存覆盖。例如：`{"overrides":{"总评":"score","课程名称":"subject"}}`；传入 `{"overrides":{}}` 可清空该数据集的全部覆盖并恢复自动映射。
 - 覆盖保存会校验当前最新清洗文件的真实列名、canonical 目标白名单、同目标重复映射和覆盖 canonical 原列等冲突，并在单一数据库事务中完成替换。不同数据集的覆盖彼此隔离。
@@ -20,11 +20,12 @@
 - 目前只使用精确、可预测的 alias 规则（NFKC、大小写、空白、`-` / `_` 标准化），不使用 AI、模糊匹配或 embedding。
 
 清洗后的 `DataFrame` 会先由 `AnalysisEngine` 识别可用字段，再通过 `ModuleRegistry`
-选择 `OrderModule`、`StudentScoreModule` 或 `GenericModule`，最后交给
+选择 `OrderModule`、`StudentScoreModule`、`InventoryModule` 或 `GenericModule`，最后交给
 `AnalysisPlanner` 生成当前数据集可执行的 `analysis_plan`。
 
 - `OrderModule` 继续由 `MetricsService` 执行既有订单、销售、区域等真实指标计算；
 - `StudentScoreModule` 由 `StudentScoreAnalyzer` 在能力规划通过后计算学生数量、成绩概览、学科/班级/学生聚合与考试趋势；
+- `InventoryModule` 由 `InventoryAnalyzer` 在能力规划通过后计算商品数量、库存概览、低库存明细、库存价值及分类/仓库/供应商/流动/趋势汇总；
 - `GenericModule` 返回真实的行数、列画像和缺失值统计，不伪造订单或销售数据。
 
 因此，非订单数据会保留既有指标返回字段，但以 `None` 或空列表表达“不适用”，不会把缺失业务指标写成 `0`。
@@ -39,7 +40,9 @@ AI 分析与 Excel、Word、PDF 报告同样基于 `analysis_plan` 动态输出�
 
 学生成绩数据会由 Pandas 计算学生数量、有效成绩数量、平均分、中位数、最高/最低分，以及可用的学科、班级、学生和考试趋势聚合。AI 只解释 `student_score_analysis` 中已计算的真实结果，不假设及格线、不推断及格率/优秀率/GPA，也不重算原始成绩。Excel、Word、PDF 会按真实存在的成绩指标和表格动态输出；本阶段**暂未实现成绩图表**。
 
-当前已建立轻量领域模块框架：`ModuleRegistry` 根据 canonical fields 的确定性规则，在 `OrderModule`、`StudentScoreModule` 与 `GenericModule` 中选择模块。学生成绩分析已支持 Python 指标计算、AI 动态解释与 Excel/Word/PDF 动态报告；无效成绩会被忽略，真实 0 分会保留。暂不包含及格率、优秀率、GPA、复杂排名、中文字段映射和成绩图表。通用模块的数值、分类、日期能力暂作为元数据声明，待后续引入字段类型感知后再接入 Planner。
+库存数据会由 Pandas 计算 `inventory_count`、`stock_summary`、`low_stock_analysis`、`inventory_value`、分类/仓库/供应商库存、库存流动和库存趋势。无效库存、成本、入库或出库值会被忽略，真实库存 `0` 会保留为真实值；低库存只在当前库存与安全库存均可计算时输出。AI 仅解释 `inventory_analysis` 中已计算的结果，不推断库存周转率、采购周期、补货天数、需求预测、缺货概率、EOQ 或 ABC 分类。Excel、Word、PDF 以概览与明细表形式输出库存结果；本阶段**不新增库存图表**。
+
+当前已建立轻量领域模块框架：`ModuleRegistry` 根据 canonical fields 的确定性规则，在 `OrderModule`、`StudentScoreModule`、`InventoryModule` 与 `GenericModule` 中选择模块。学生成绩与库存分析均支持 Python 指标计算、AI 动态解释与 Excel/Word/PDF 动态报告；无效数值会被忽略，真实 `0` 会保留。暂不包含及格率、优秀率、GPA、复杂排名、库存预测、EOQ、ABC 分类、库存周转率或库存图表。通用模块的数值、分类、日期能力暂作为元数据声明，待后续引入字段类型感知后再接入 Planner。
 
 面向企业销售运营场景的全栈数据分析平台。用户上传 Excel/CSV 后，可完成数据解析、清洗、指标分析、可视化、AI 业务洞察与多格式报告导出。
 

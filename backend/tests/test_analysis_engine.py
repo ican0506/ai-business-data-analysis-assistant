@@ -103,3 +103,17 @@ def test_engine_keeps_all_empty_mapped_score_unavailable() -> None:
     assert context["selected_module"]["id"] == "student_score"
     assert "score" not in context["available_fields"]
     assert plan_by_id(context)["score_summary"]["supported"] is False
+
+
+def test_engine_selects_inventory_and_plans_only_inventory_capabilities() -> None:
+    context = AnalysisEngine().build_context(
+        pd.DataFrame({"商品编号": ["P001"], "库存数量": [5], "安全库存": [10], "单位成本": [20]})
+    )
+
+    plan = plan_by_id(context)
+    assert context["selected_module"]["id"] == "inventory"
+    assert plan["inventory_count"]["supported"] is True
+    assert plan["stock_summary"]["supported"] is True
+    assert plan["low_stock_analysis"]["supported"] is True
+    assert plan["inventory_value"]["supported"] is True
+    assert "sales_total" not in plan

@@ -208,3 +208,75 @@ def test_report_exports_skip_unavailable_sales_and_region_chart() -> None:
     assert excel.active._charts == []
     assert service.build_word(None, dataset).startswith(b"PK")
     assert service.build_pdf(None, dataset).startswith(b"%PDF")
+
+
+def inventory_metrics() -> dict:
+    return {
+        "total_rows": 3,
+        "selected_module": {"id": "inventory", "name": "库存分析"},
+        "inventory_analysis": {
+            "inventory_count": 3,
+            "stock_summary": {
+                "count": 2,
+                "total": 35.0,
+                "average": 17.5,
+                "maximum": 30.0,
+                "minimum": 5.0,
+                "median": 17.5,
+            },
+            "low_stock_analysis": [
+                {"product_id": "P001", "product_name": "商品A", "stock_quantity": 5.0, "safety_stock": 10.0, "shortage": 5.0}
+            ],
+            "inventory_value": {"count": 2, "total": 460.0, "average": 230.0},
+            "category_stock": [{"name": "电子", "value": 35.0}],
+            "warehouse_stock": [{"name": "郑州仓", "value": 35.0}],
+            "supplier_stock": [],
+            "inventory_flow": None,
+            "inventory_trend": [],
+        },
+        "sales_amount": None,
+        "completion_rate": None,
+        "order_count": None,
+        "product_quantity": [],
+        "region_ranking": [],
+        "top_regions": [],
+        "analysis_plan": [],
+    }
+
+
+def test_inventory_overview_contains_only_real_inventory_metrics() -> None:
+    rows = dict(ReportService._overview_rows(inventory_metrics()))
+
+    assert rows["商品数量"] == 3
+    assert rows["库存总量"] == 35.0
+    assert rows["平均库存"] == 17.5
+    assert rows["库存价值总计"] == 460.0
+    assert "销售额总计" not in rows
+    assert "完成率" not in rows
+
+
+def test_inventory_exports_render_tables_without_order_chart() -> None:
+    metrics = inventory_metrics()
+    analysis = {
+        "mode": "rule_based",
+        "metrics": metrics,
+        "summary": "当前库存总量 35.0。",
+        "anomalies": ["存在 1 个低库存商品。"],
+        "business_problems": ["低库存商品存在库存缺口。"],
+        "recommendations": ["核对低库存商品库存记录。"],
+    }
+    service = ReportService()
+    service.analysis_service = SimpleNamespace(generate_report=lambda *_args: analysis)
+    dataset = SimpleNamespace(original_filename="inventory.csv")
+
+    workbook = load_workbook(BytesIO(service.build_excel(None, dataset)))
+    values = [cell.value for row in workbook.active.iter_rows() for cell in row if cell.value is not None]
+
+    assert "商品数量" in values
+    assert "低库存明细" in values
+    assert "分类库存统计" in values
+    assert "仓库库存统计" in values
+    assert "销售额总计" not in values
+    assert workbook.active._charts == []
+    assert service.build_word(None, dataset).startswith(b"PK")
+    assert service.build_pdf(None, dataset).startswith(b"%PDF")

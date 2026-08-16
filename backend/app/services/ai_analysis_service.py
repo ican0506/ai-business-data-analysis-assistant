@@ -32,6 +32,8 @@ class AIAnalysisService:
         module_id = selected_module.get("id", "order")
         if module_id == "student_score":
             calculated_metrics = (metrics.get("student_score_analysis") or {}).copy()
+        elif module_id == "inventory":
+            calculated_metrics = (metrics.get("inventory_analysis") or {}).copy()
         elif module_id == "generic":
             calculated_metrics = {"generic_analysis": metrics.get("generic_analysis")}
         else:
@@ -74,6 +76,8 @@ class AIAnalysisService:
         module_id = analysis_context["selected_module"].get("id")
         if module_id == "student_score":
             return self._build_student_score_rule_report(metrics, analysis_context)
+        if module_id == "inventory":
+            return self._build_inventory_rule_report(metrics, analysis_context)
         if module_id == "generic":
             return self._build_generic_rule_report(metrics, analysis_context)
         supported = analysis_context["supported_analyses"]
@@ -286,6 +290,81 @@ class AIAnalysisService:
         }
 
     @staticmethod
+    def _build_inventory_rule_report(metrics: dict, analysis_context: dict) -> dict:
+        """Describe only inventory metrics calculated by InventoryAnalyzer."""
+        supported = analysis_context["supported_analyses"]
+        summary_parts = [f"本次库存分析覆盖 {metrics.get('total_rows', 0)} 条有效记录"]
+        anomalies: list[str] = []
+        problems: list[str] = []
+        recommendations: list[str] = []
+
+        inventory_count = supported.get("inventory_count")
+        stock_summary = supported.get("stock_summary")
+        low_stock = supported.get("low_stock_analysis", [])
+        inventory_value = supported.get("inventory_value")
+        warehouse_stock = supported.get("warehouse_stock", [])
+        inventory_trend = supported.get("inventory_trend", [])
+
+        if inventory_count is not None:
+            summary_parts.append(f"商品数量 {inventory_count}")
+        if isinstance(stock_summary, dict):
+            summary_parts.append(
+                f"库存总量 {stock_summary.get('total')}，平均库存 {stock_summary.get('average')}"
+            )
+        if isinstance(inventory_value, dict):
+            summary_parts.append(f"库存价值总计 {inventory_value.get('total')}")
+        if warehouse_stock:
+            leading_warehouse = warehouse_stock[0]
+            summary_parts.append(
+                f"库存量较高的仓库为 {leading_warehouse['name']}（{leading_warehouse['value']}）"
+            )
+
+        if low_stock:
+            names = "、".join(
+                item.get("product_name") or item.get("product_id") or "未命名商品"
+                for item in low_stock[:5]
+            )
+            anomalies.append(f"存在 {len(low_stock)} 个低库存商品：{names}。")
+            problems.append("已计算的安全库存与当前库存之间存在缺口。")
+            recommendations.append("核对低库存商品的当前库存与安全库存记录，并安排后续人工跟踪。")
+
+        if len(inventory_trend) >= 2:
+            first, last = inventory_trend[0], inventory_trend[-1]
+            change = round(float(last["value"]) - float(first["value"]), 2)
+            if change > 0:
+                anomalies.append(f"库存总量从 {first['name']} 到 {last['name']} 上升 {change}。")
+            elif change < 0:
+                anomalies.append(f"库存总量从 {first['name']} 到 {last['name']} 下降 {abs(change)}。")
+            else:
+                anomalies.append(f"库存总量从 {first['name']} 到 {last['name']} 保持不变。")
+            recommendations.append("持续记录库存日期数据，以便基于真实库存变化进行复盘。")
+
+        if not anomalies:
+            anomalies.append("当前已计算的库存指标未触发低库存或趋势异常结论。")
+        if not problems:
+            problems.append("仅基于当前已计算的库存指标进行描述，未对缺失库存指标作业务评价。")
+        if not recommendations:
+            recommendations.append("持续补充真实库存、安全库存或仓库字段，以支持更完整的库存复盘。")
+
+        overview = "；".join(summary_parts) + "。"
+        return {
+            "mode": "rule_based",
+            "summary": overview,
+            "anomalies": anomalies,
+            "business_problems": problems,
+            "recommendations": recommendations,
+            "report": "\n".join(
+                [
+                    f"数据概览：{overview}",
+                    f"异常分析：{'；'.join(anomalies)}",
+                    f"业务问题：{'；'.join(problems)}",
+                    f"优化建议：{'；'.join(recommendations)}",
+                ]
+            ),
+            "analysis_context": analysis_context,
+        }
+
+    @staticmethod
     def _deepseek_metrics_payload(metrics: dict, analysis_context: dict) -> dict:
         selected_module = analysis_context.get("selected_module") or {"id": "order"}
         if selected_module.get("id") == "student_score":
@@ -302,6 +381,13 @@ class AIAnalysisService:
                 "analysis_plan": analysis_context.get("analysis_plan", []),
                 "generic_analysis": metrics.get("generic_analysis"),
             }
+        if selected_module.get("id") == "inventory":
+            return {
+                "selected_module": selected_module,
+                "available_fields": analysis_context.get("available_fields", []),
+                "analysis_plan": analysis_context.get("analysis_plan", []),
+                "inventory_analysis": metrics.get("inventory_analysis"),
+            }
         return metrics
 
     @staticmethod
@@ -317,13 +403,19 @@ class AIAnalysisService:
             if selected_module == "student_score"
             else ""
         )
+        inventory_constraints = (
+            "当前是库存数据：只能使用 inventory_analysis；不得推断库存周转率、采购周期、补货天数、"
+            "需求预测、缺货概率、EOQ 或 ABC 分类；不得编造商品、仓库、供应商或库存指标。\n"
+            if selected_module == "inventory"
+            else ""
+        )
         prompt = (
             "你是一名企业运营数据分析师。只可基于 Python 已计算的真实分析结果生成中文报告。"
             "只能分析 supported_analyses 和提供的 metrics；不得推断 skipped_analyses。"
             "缺失字段不代表数值为 0；不得编造销售额、完成率、区域、客户或退款数据。"
             "所有数字必须来自输入 metrics；真实为 0 的指标可以正常说明。"
             "可以说明某项因缺少字段未分析，但不得评价该项业务表现，也不得根据字段名称自行补充指标。"
-            f"{student_constraints}"
+            f"{student_constraints}{inventory_constraints}"
             "返回 JSON：summary, anomalies, business_problems, recommendations, report。\n"
             f"分析上下文：{analysis_context}\n"
             f"真实指标：{AIAnalysisService._deepseek_metrics_payload(metrics, analysis_context)}"

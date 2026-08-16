@@ -5,6 +5,7 @@ from collections.abc import Mapping
 
 from app.analysis_modules.generic import GenericModule
 from app.analysis_modules.order import OrderModule
+from app.analysis_modules.inventory import InventoryModule
 from app.analysis_modules.registry import ModuleRegistry
 from app.analysis_modules.student_score import StudentScoreModule
 from app.services.canonical_field_mapper import CanonicalFieldMapper
@@ -17,6 +18,7 @@ def build_default_registry() -> ModuleRegistry:
         [
             OrderModule(),
             StudentScoreModule(),
+            InventoryModule(),
             GenericModule(),
         ]
     )

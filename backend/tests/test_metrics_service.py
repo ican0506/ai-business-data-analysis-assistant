@@ -251,3 +251,24 @@ def test_unknown_chinese_columns_remain_generic_and_are_reported_as_unmapped() -
         "unmapped_columns": ["城市", "温度", "备注"],
         "conflicts": [],
     }
+
+
+def test_chinese_inventory_data_runs_inventory_analysis_without_order_or_student_metrics() -> None:
+    metrics = build_metrics(
+        {
+            "商品编号": ["P001", "P002"],
+            "商品名称": ["商品A", "商品B"],
+            "库存数量": [5, 30],
+            "安全库存": [10, 15],
+            "单位成本": [20, 12],
+            "仓库": ["郑州仓", "郑州仓"],
+        }
+    )
+
+    assert metrics["selected_module"]["id"] == "inventory"
+    assert metrics["inventory_analysis"]["inventory_count"] == 2
+    assert metrics["inventory_analysis"]["inventory_value"]["total"] == 460.0
+    assert metrics["inventory_analysis"]["low_stock_analysis"][0]["product_id"] == "P001"
+    assert metrics["inventory_analysis"]["warehouse_stock"] == [{"name": "郑州仓", "value": 35.0}]
+    assert metrics["sales_amount"] is None
+    assert metrics["student_score_analysis"] is None

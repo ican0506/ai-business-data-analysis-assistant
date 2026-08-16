@@ -105,3 +105,16 @@ def test_maps_all_empty_score_header_but_keeps_value_availability_for_planner() 
 
     assert list(mapped.columns) == ["student_id", "score"]
     assert mapped["score"].isna().all()
+
+
+def test_maps_chinese_inventory_headers_without_changing_order_product_mapping() -> None:
+    inventory, inventory_metadata = CanonicalFieldMapper().map_dataframe(
+        pd.DataFrame({"商品编号": ["P001"], "商品名称": ["商品A"], "库存数量": [5], "安全库存": [10], "单位成本": [20], "仓库": ["郑州仓"]})
+    )
+    order, _order_metadata = CanonicalFieldMapper().map_dataframe(
+        pd.DataFrame({"订单编号": ["O001"], "商品名称": ["商品A"], "数量": [2], "单价": [5]})
+    )
+
+    assert list(inventory.columns) == ["product_id", "product_name", "stock_quantity", "safety_stock", "unit_cost", "warehouse"]
+    assert list(order.columns) == ["order_id", "product", "quantity", "unit_price"]
+    assert inventory_metadata["conflicts"] == []

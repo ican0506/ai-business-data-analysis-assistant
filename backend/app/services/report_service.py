@@ -31,7 +31,10 @@ class ReportService:
         skipped_analyses = self._skipped_analysis_rows(metrics)
         if skipped_analyses:
             sheet.append(["本次未分析指标", "；".join(skipped_analyses)])
-        for title, headers, rows in self._student_score_tables(metrics):
+        for title, headers, rows in [
+            *self._student_score_tables(metrics),
+            *self._inventory_tables(metrics),
+        ]:
             sheet.append([])
             sheet.append([title])
             sheet.append(headers)
@@ -43,7 +46,7 @@ class ReportService:
         sheet.append(["异常发现", "；".join(analysis["anomalies"])])
         sheet.append(["业务问题", "；".join(analysis["business_problems"])])
         sheet.append(["优化建议", "；".join(analysis["recommendations"])])
-        top_regions = [] if self._is_student_score(metrics) else metrics.get("top_regions", [])
+        top_regions = [] if self._is_student_score(metrics) or self._is_inventory(metrics) else metrics.get("top_regions", [])
         if top_regions:
             sheet["D1"] = "区域"
             sheet["E1"] = "销售额"
@@ -87,6 +90,32 @@ class ReportService:
                         ("中位数", score_summary.get("median")),
                         ("最高分", score_summary.get("maximum")),
                         ("最低分", score_summary.get("minimum")),
+                    ]
+                )
+            return rows
+        if ReportService._is_inventory(metrics):
+            inventory_analysis = ReportService._inventory_analysis(metrics)
+            stock_summary = inventory_analysis.get("stock_summary")
+            inventory_value = inventory_analysis.get("inventory_value")
+            rows: list[tuple[str, str | float | int | None]] = []
+            if inventory_analysis.get("inventory_count") is not None:
+                rows.append(("商品数量", inventory_analysis["inventory_count"]))
+            if isinstance(stock_summary, dict):
+                rows.extend(
+                    [
+                        ("有效库存记录数", stock_summary.get("count")),
+                        ("库存总量", stock_summary.get("total")),
+                        ("平均库存", stock_summary.get("average")),
+                        ("最大库存", stock_summary.get("maximum")),
+                        ("最小库存", stock_summary.get("minimum")),
+                        ("库存中位数", stock_summary.get("median")),
+                    ]
+                )
+            if isinstance(inventory_value, dict):
+                rows.extend(
+                    [
+                        ("库存价值总计", inventory_value.get("total")),
+                        ("平均库存价值", inventory_value.get("average")),
                     ]
                 )
             return rows
@@ -135,8 +164,17 @@ class ReportService:
         return (metrics.get("selected_module") or {}).get("id") == "student_score"
 
     @staticmethod
+    def _is_inventory(metrics: dict) -> bool:
+        return (metrics.get("selected_module") or {}).get("id") == "inventory"
+
+    @staticmethod
     def _student_score_analysis(metrics: dict) -> dict:
         value = metrics.get("student_score_analysis")
+        return value if isinstance(value, dict) else {}
+
+    @staticmethod
+    def _inventory_analysis(metrics: dict) -> dict:
+        value = metrics.get("inventory_analysis")
         return value if isinstance(value, dict) else {}
 
     @staticmethod
@@ -181,6 +219,56 @@ class ReportService:
                     ["考试", "平均分", "有效成绩数"],
                     [[item["name"], item["average"], item["count"]] for item in trend],
                 )
+            )
+        return tables
+
+    @staticmethod
+    def _inventory_tables(metrics: dict) -> list[tuple[str, list[str], list[list[object]]]]:
+        if not ReportService._is_inventory(metrics):
+            return []
+        analysis = ReportService._inventory_analysis(metrics)
+        tables: list[tuple[str, list[str], list[list[object]]]] = []
+        low_stock = analysis.get("low_stock_analysis", [])
+        if low_stock:
+            tables.append(
+                (
+                    "低库存明细",
+                    ["商品编号", "商品名称", "当前库存", "安全库存", "库存缺口"],
+                    [
+                        [
+                            item.get("product_id", ""),
+                            item.get("product_name", ""),
+                            item.get("stock_quantity"),
+                            item.get("safety_stock"),
+                            item.get("shortage"),
+                        ]
+                        for item in low_stock
+                    ],
+                )
+            )
+        for key, title, first_column in (
+            ("category_stock", "分类库存统计", "分类"),
+            ("warehouse_stock", "仓库库存统计", "仓库"),
+            ("supplier_stock", "供应商库存统计", "供应商"),
+        ):
+            values = analysis.get(key, [])
+            if values:
+                tables.append(
+                    (title, [first_column, "库存数量"], [[item["name"], item["value"]] for item in values])
+                )
+        inventory_flow = analysis.get("inventory_flow")
+        if isinstance(inventory_flow, dict):
+            tables.append(
+                (
+                    "库存流动统计",
+                    ["入库总量", "出库总量", "净变化"],
+                    [[inventory_flow.get("inbound_total"), inventory_flow.get("outbound_total"), inventory_flow.get("net_change")]],
+                )
+            )
+        inventory_trend = analysis.get("inventory_trend", [])
+        if inventory_trend:
+            tables.append(
+                ("库存趋势", ["日期", "库存总量"], [[item["name"], item["value"]] for item in inventory_trend])
             )
         return tables
 
@@ -283,6 +371,15 @@ class ReportService:
                     ("；".join(str(value) for value in row), 8.5)
                     for row in rows
                 )
+        if ReportService._is_inventory(metrics):
+            sections[0] = ("AI 智能数据分析助手 - 库存分析报告", 16)
+            for title, headers, rows in ReportService._inventory_tables(metrics):
+                sections.append((title, 10))
+                sections.append(("；".join(headers), 8.5))
+                sections.extend(
+                    ("；".join(str(value) for value in row), 8.5)
+                    for row in rows
+                )
         figure, axis = plt.subplots(figsize=(8.2, max(5.5, 1.2 + len(sections) * 0.42)))
         axis.axis("off")
         y_position = 0.96
@@ -323,7 +420,10 @@ class ReportService:
             doc.add_heading("本次未分析指标", 1)
             for item in skipped_analyses:
                 doc.add_paragraph(item, style="List Bullet")
-        for title, headers, rows in self._student_score_tables(metrics):
+        for title, headers, rows in [
+            *self._student_score_tables(metrics),
+            *self._inventory_tables(metrics),
+        ]:
             doc.add_heading(title, 1)
             table = doc.add_table(rows=1, cols=len(headers))
             table.style = "Table Grid"
@@ -333,7 +433,7 @@ class ReportService:
                 cells = table.add_row().cells
                 for index, value in enumerate(row):
                     cells[index].text = str(value)
-        chart = None if self._is_student_score(metrics) else self._build_region_chart(metrics)
+        chart = None if self._is_student_score(metrics) or self._is_inventory(metrics) else self._build_region_chart(metrics)
         if chart is not None:
             doc.add_heading("区域销售额图表", 1)
             doc.add_picture(chart)
@@ -368,7 +468,7 @@ class ReportService:
         canvas.showPage()
         chart = (
             None
-            if self._is_student_score(analysis["metrics"])
+            if self._is_student_score(analysis["metrics"]) or self._is_inventory(analysis["metrics"])
             else self._build_region_chart(analysis["metrics"])
         )
         if chart is not None:

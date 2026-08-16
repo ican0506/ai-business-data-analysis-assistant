@@ -22,15 +22,17 @@ export const useAnalysisStore = defineStore('analysis', {
   },
   actions: {
     async load(datasetId) {
-      if (!datasetId) return
-      this.datasetId = Number(datasetId)
+      const normalizedDatasetId = Number(datasetId)
+      if (!Number.isInteger(normalizedDatasetId) || normalizedDatasetId <= 0) return
+
+      this.datasetId = normalizedDatasetId
       const requestVersion = ++this.loadVersion
       this.loading = true
       this.error = ''
       try {
         const [fieldMapping, metrics] = await Promise.all([
-          getFieldMapping(this.datasetId),
-          getDatasetMetrics(this.datasetId),
+          getFieldMapping(normalizedDatasetId),
+          getDatasetMetrics(normalizedDatasetId),
         ])
         if (requestVersion === this.loadVersion) {
           this.fieldMapping = fieldMapping

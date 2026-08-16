@@ -51,9 +51,9 @@ async function resetMapping() { await saveMapping({}) }
     <template v-else>
       <el-card class="dataset-context-card" shadow="never"><el-descriptions :column="3" border><el-descriptions-item label="当前数据集">{{ currentDataset.fileName }}</el-descriptions-item><el-descriptions-item label="清洗状态">{{ currentDataset.status }}</el-descriptions-item><el-descriptions-item label="识别结果"><DomainBadge :selected-module="analysisStore.selectedModule" /></el-descriptions-item></el-descriptions></el-card>
       <Loading v-if="analysisStore.loading" text="正在加载真实分析结果…" />
-      <ErrorState v-else-if="analysisStore.error" title="分析结果加载失败" :description="analysisStore.error" @retry="refresh" />
-      <component :is="dashboardComponent" v-else-if="analysisStore.metrics" :metrics="analysisStore.metrics" />
-      <el-empty v-else description="尚未获得分析结果，请先完成数据清洗。" />
+      <ErrorState v-if="analysisStore.error" title="分析结果加载失败" :description="analysisStore.error" @retry="refresh" />
+      <component v-if="analysisStore.metrics && !analysisStore.error" :is="dashboardComponent" :key="`${analysisStore.datasetId}-${analysisStore.metricsVersion}-${analysisStore.selectedModule.id}`" :metrics="analysisStore.metrics" />
+      <el-empty v-if="!analysisStore.loading && !analysisStore.error && !analysisStore.metrics" description="尚未获得分析结果，请先完成数据清洗。" />
     </template>
     <FieldMappingDialog v-model="mappingVisible" :mapping="analysisStore.fieldMapping" :saving="analysisStore.savingMapping" @save="saveMapping" @reset="resetMapping" />
   </section>

@@ -13,6 +13,7 @@ export const useAnalysisStore = defineStore('analysis', {
     mappingDialogVisible: false,
     error: '',
     loadVersion: 0,
+    metricsVersion: 0,
   }),
   getters: {
     selectedModule: (state) => state.metrics?.selected_module || { id: 'generic', name: '通用数据分析' },
@@ -34,6 +35,7 @@ export const useAnalysisStore = defineStore('analysis', {
         if (requestVersion === this.loadVersion) {
           this.fieldMapping = fieldMapping
           this.metrics = metrics
+          this.metricsVersion += 1
         }
       } catch (error) {
         if (requestVersion === this.loadVersion) this.error = error.message || '加载数据集分析结果失败，请重试。'

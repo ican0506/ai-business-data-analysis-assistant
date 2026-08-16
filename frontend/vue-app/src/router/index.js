@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 import LoginView from '../views/LoginView.vue'
+import RegisterView from '../views/RegisterView.vue'
 import DashboardView from '../views/DashboardView.vue'
 import DatasetManagementView from '../views/DatasetManagementView.vue'
 import AiAnalysisView from '../views/AiAnalysisView.vue'
@@ -13,6 +14,7 @@ const router = createRouter({
   routes: [
     { path: '/', redirect: '/dashboard' },
     { path: '/login', name: 'login', component: LoginView, meta: { public: true } },
+    { path: '/register', name: 'register', component: RegisterView, meta: { public: true } },
     { path: '/workspace', redirect: '/dashboard' },
     { path: '/dashboard', name: 'dashboard', component: DashboardView },
     { path: '/datasets', name: 'datasets', component: DatasetManagementView },
@@ -25,7 +27,7 @@ const router = createRouter({
 router.beforeEach((to) => {
   const hasToken = Boolean(localStorage.getItem(TOKEN_STORAGE_KEY))
   if (!to.meta.public && !hasToken) return { name: 'login' }
-  if (to.name === 'login' && hasToken) return { name: 'dashboard' }
+  if ((to.name === 'login' || to.name === 'register') && hasToken) return { name: 'dashboard' }
   return true
 })
 

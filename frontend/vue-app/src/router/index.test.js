@@ -11,6 +11,7 @@ describe('后台导航路由', () => {
       'datasets',
       'ai-analysis',
       'downloads',
+      'register',
     ]))
   })
 })

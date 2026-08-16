@@ -1,14 +1,16 @@
 <script setup>
-import { reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
 import { useAuthStore } from '../stores/auth'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 const form = reactive({ username: '', password: '' })
 const errorMessage = ref('')
 const isSubmitting = ref(false)
+const successMessage = computed(() => route.query.registered === '1' ? '注册成功，请登录' : '')
 
 async function submitLogin() {
   errorMessage.value = ''
@@ -42,9 +44,11 @@ async function submitLogin() {
           <input v-model="form.password" type="password" autocomplete="current-password" required placeholder="请输入密码" />
         </label>
         <p v-if="errorMessage" class="form-error" role="alert">{{ errorMessage }}</p>
+        <p v-if="successMessage" class="form-success" role="status">{{ successMessage }}</p>
         <button type="submit" :disabled="isSubmitting">
           {{ isSubmitting ? '正在登录…' : '登录工作台' }}
         </button>
+        <p class="auth-switch">还没有账号？<router-link :to="{ name: 'register' }">立即注册</router-link></p>
       </form>
     </section>
   </main>

@@ -22,6 +22,21 @@ export async function analyzeDataset(datasetId) {
   return response.data
 }
 
+export async function getDatasetMetrics(datasetId) {
+  const response = await http.get(`/api/v1/datasets/${datasetId}/metrics`)
+  return response.data
+}
+
+export async function getFieldMapping(datasetId) {
+  const response = await http.get(`/api/v1/datasets/${datasetId}/field-mapping`)
+  return response.data
+}
+
+export async function replaceFieldMapping(datasetId, overrides) {
+  const response = await http.put(`/api/v1/datasets/${datasetId}/field-mapping`, { overrides })
+  return response.data
+}
+
 export async function downloadDatasetReport(datasetId, reportType) {
   const path = reportType === 'excel'
     ? `/api/v1/datasets/${datasetId}/reports/excel`

@@ -32,6 +32,10 @@
 
 ## 当前开发进度
 
+Vue 前端已接入当前数据集的真实 `metrics`、`selected_module` 与字段映射接口：数据驾驶舱会根据 `order`、`student_score`、`inventory`、`generic` 动态展示对应的指标、表格和 ECharts 图表。前端不会将后端的 `null` / 空数组转换为 `0`，未知领域安全回退为通用数据展示。
+
+数据集管理页与分析工作区均提供“字段映射”入口，可查看 automatic、override、unmapped 与 conflict 状态；用户选择受限的 canonical target 后，前端使用 `PUT /api/v1/datasets/{id}/field-mapping` 全量保存 override，并自动重新读取映射和 metrics，因此领域识别和图表无需刷新页面即可更新。“恢复自动映射”会发送空 overrides。当前未实现前端自动字段推荐、模糊匹配、LLM 映射、库存预测或前端自行计算业务指标。
+
 已完成 Analysis Planner 与 MetricsService 的能力驱动指标计算：系统会在清洗后的数据中识别可用字段，返回 `available_fields` 与 `analysis_plan`，并在字段缺失时以 `null` 或空列表表达“当前无法分析”，不会把缺字段误报为数值 `0`。
 
 当不存在 `sales_amount`、但存在有效的 `unit_price` 与 `quantity` 时，系统只在内存分析副本中派生销售额，不会改写已清洗的 CSV 文件。

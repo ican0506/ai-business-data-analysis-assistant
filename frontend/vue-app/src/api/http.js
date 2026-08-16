@@ -30,7 +30,10 @@ http.interceptors.response.use(
     if (responseData instanceof Blob) {
       try { responseData = JSON.parse(await responseData.text()) } catch { responseData = null }
     }
-    const message = responseData?.detail || responseData?.message || '网络请求失败，请稍后重试'
+    const isTimeout = error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT' || /timeout/i.test(error.message || '')
+    const message = isTimeout
+      ? error.config?.timeoutMessage || '请求超时，请稍后重试。'
+      : responseData?.detail || responseData?.message || '网络请求失败，请稍后重试'
     window.dispatchEvent(new CustomEvent('app-error', { detail: message }))
     return Promise.reject(new Error(message))
   },

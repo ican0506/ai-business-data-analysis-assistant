@@ -12,6 +12,7 @@ export const useAnalysisStore = defineStore('analysis', {
     savingMapping: false,
     mappingDialogVisible: false,
     error: '',
+    loadVersion: 0,
   }),
   getters: {
     selectedModule: (state) => state.metrics?.selected_module || { id: 'generic', name: '通用数据分析' },
@@ -22,6 +23,7 @@ export const useAnalysisStore = defineStore('analysis', {
     async load(datasetId) {
       if (!datasetId) return
       this.datasetId = Number(datasetId)
+      const requestVersion = ++this.loadVersion
       this.loading = true
       this.error = ''
       try {
@@ -29,13 +31,15 @@ export const useAnalysisStore = defineStore('analysis', {
           getFieldMapping(this.datasetId),
           getDatasetMetrics(this.datasetId),
         ])
-        this.fieldMapping = fieldMapping
-        this.metrics = metrics
+        if (requestVersion === this.loadVersion) {
+          this.fieldMapping = fieldMapping
+          this.metrics = metrics
+        }
       } catch (error) {
-        this.error = error.message || '加载数据集分析结果失败，请重试。'
+        if (requestVersion === this.loadVersion) this.error = error.message || '加载数据集分析结果失败，请重试。'
         throw error
       } finally {
-        this.loading = false
+        if (requestVersion === this.loadVersion) this.loading = false
       }
     },
     async saveOverrides(overrides) {

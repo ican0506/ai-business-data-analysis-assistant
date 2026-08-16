@@ -146,6 +146,31 @@ npm run dev
 
 完整接口清单见 [API 文档](docs/api.md)，数据库说明见 [database.md](docs/database.md)。
 
+## 完整使用流程与演示数据
+
+1. 启动 MySQL 后启动 FastAPI 与 Vue 前端，使用“注册 / 登录”进入工作台。
+2. 在“数据集管理”上传 CSV 或 XLSX；空文件、仅表头文件、非 CSV/XLSX 或无法解析的文件会返回明确提示。
+3. 对上传结果执行“开始清洗”，随后进入“数据驾驶舱”查看自动领域识别和真实指标。
+4. 若自动识别不完整，在“字段映射”中保存用户覆盖；保存后无需刷新浏览器，驾驶舱会重新请求指标并切换领域。
+5. 在“AI 分析报告”生成洞察。DeepSeek 不可用时，系统会基于 Python 已计算的指标自动使用规则引擎降级，不影响指标查看与报告导出。
+6. 在“报告下载中心”导出 Excel、Word 或 PDF。下载以 HTTP `Content-Disposition` 的文件名为准；HTTP 错误或空文件不会创建损坏下载。
+
+可直接上传以下轻量演示数据：
+
+| 领域 | 文件 | 推荐字段 |
+| --- | --- | --- |
+| Order | `examples/order_sample.csv` | 订单编号、商品名称、数量、单价、区域、订单日期 |
+| StudentScore | `examples/student_score_sample.csv` | 学号、学生姓名、科目、成绩、班级、考试日期 |
+| Inventory | `examples/inventory_sample.csv` | 商品编号、商品名称、库存数量、安全库存、单位成本、仓库 |
+| Generic | `examples/generic_sample.csv` | 姓名、城市、备注 |
+
+### 指标语义约定
+
+- `null` / `—` 表示当前数据集缺少条件，指标**不可分析或不适用**；它不等于 0。
+- `0` 是 Python / Pandas 已真实计算出的数值，前端、AI 与报告会如实保留。
+- AI 不负责计算核心指标。订单、成绩、库存与通用分析的数值真值始终由 Python / Pandas 产生；AI 只解释这些结构化结果。
+- `Generic` 是预期的通用数据分析回退，而不是“识别失败”；它提供行数、列画像和缺失值统计，不伪造销售、成绩或库存指标。
+
 ## 测试与安全
 
 ```powershell

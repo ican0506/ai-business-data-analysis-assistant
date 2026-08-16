@@ -22,6 +22,7 @@ function formatDate(value) {
 }
 
 function saveBlob(blob, filename) {
+  if (!(blob instanceof Blob) || blob.size === 0) throw new Error('报告文件为空，未创建下载。')
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
@@ -33,8 +34,8 @@ function saveBlob(blob, filename) {
 async function downloadReport(report) {
   downloadingKey.value = report.id
   try {
-    const blob = await downloadDatasetReport(report.datasetId, report.type)
-    saveBlob(blob, report.reportName)
+    const { blob, filename } = await downloadDatasetReport(report.datasetId, report.type)
+    saveBlob(blob, filename || report.reportName)
     history.value = saveReportRecord(report)
     ElMessage.success(`${report.type.toUpperCase()} 报告已开始下载。`)
   } catch (error) {

@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 
 import DomainBadge from '../components/analysis/DomainBadge.vue'
@@ -14,13 +15,31 @@ import { useAnalysisStore } from '../stores/analysis'
 import { getActiveDatasetId, loadDatasetHistory, setActiveDatasetId } from '../utils/datasetHistory'
 
 const analysisStore = useAnalysisStore()
+const route = useRoute()
 const records = computed(() => loadDatasetHistory())
-const activeDatasetId = ref(getActiveDatasetId() || records.value[0]?.id || null)
-const currentDataset = computed(() => records.value.find((item) => item.id === Number(activeDatasetId.value)) || null)
+const routeDatasetId = Number(route.query.datasetId)
+const initialDatasetId = Number.isInteger(routeDatasetId) && routeDatasetId > 0
+  ? routeDatasetId
+  : getActiveDatasetId() || records.value[0]?.id || null
+const activeDatasetId = ref(initialDatasetId)
+const currentDataset = computed(() => records.value.find((item) => item.id === Number(activeDatasetId.value)) || (activeDatasetId.value ? { id: activeDatasetId.value, fileName: `数据集 #${activeDatasetId.value}`, status: '待加载' } : null))
 const dashboardComponent = computed(() => ({ order: OrderDashboard, student_score: StudentScoreDashboard, inventory: InventoryDashboard, generic: GenericDashboard }[analysisStore.domain.id] || GenericDashboard))
 const mappingVisible = computed({ get: () => Boolean(analysisStore.mappingDialogVisible), set: (value) => { analysisStore.mappingDialogVisible = value } })
-watch(activeDatasetId, async (datasetId) => { if (datasetId) { setActiveDatasetId(datasetId); await analysisStore.load(datasetId) } }, { immediate: true })
-async function refresh() { if (activeDatasetId.value) await analysisStore.load(activeDatasetId.value) }
+async function loadDataset(datasetId) {
+  if (!datasetId) return
+  setActiveDatasetId(datasetId)
+  try {
+    await analysisStore.load(datasetId)
+  } catch {
+    // 错误已写入 store，由页面 ErrorState 展示并提供重试。
+  }
+}
+watch(activeDatasetId, loadDataset, { immediate: true })
+watch(() => route.query.datasetId, (value) => {
+  const datasetId = Number(value)
+  if (Number.isInteger(datasetId) && datasetId > 0 && datasetId !== Number(activeDatasetId.value)) activeDatasetId.value = datasetId
+})
+async function refresh() { await loadDataset(activeDatasetId.value) }
 async function saveMapping(overrides) { try { await analysisStore.saveOverrides(overrides); ElMessage.success('字段映射已保存，当前领域和指标已自动刷新。') } catch (error) { ElMessage.error(error.message || '字段映射保存失败。') } }
 async function resetMapping() { await saveMapping({}) }
 </script>

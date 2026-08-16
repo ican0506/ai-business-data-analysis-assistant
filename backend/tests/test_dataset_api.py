@@ -89,6 +89,17 @@ def test_upload_rejects_unsupported_file_type(client: TestClient) -> None:
     assert response.json()["detail"] == "仅支持 CSV 或 XLSX 文件"
 
 
+def test_upload_rejects_csv_with_header_only(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/datasets/upload",
+        headers=auth_headers(client),
+        files={"file": ("empty.csv", BytesIO("姓名,城市\n".encode("utf-8")), "text/csv")},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "数据文件不包含可分析的数据行"
+
+
 def test_upload_xlsx_returns_preview(client: TestClient) -> None:
     content = BytesIO()
     pd.DataFrame({"region": ["华东"], "sales_amount": [1000]}).to_excel(content, index=False)

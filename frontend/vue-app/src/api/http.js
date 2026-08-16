@@ -18,15 +18,19 @@ http.interceptors.request.use((config) => {
 })
 
 http.interceptors.response.use(
-  (response) => { endRequest(); return response.data },
-  (error) => {
+  (response) => { endRequest(); return response.config.returnRawResponse ? response : response.data },
+  async (error) => {
     endRequest()
     if (error.response?.status === 401) {
       localStorage.removeItem(TOKEN_STORAGE_KEY)
       localStorage.removeItem('ai_insight_user')
       if (window.location.pathname !== '/login') window.location.assign('/login')
     }
-    const message = error.response?.data?.detail || error.response?.data?.message || '网络请求失败，请稍后重试'
+    let responseData = error.response?.data
+    if (responseData instanceof Blob) {
+      try { responseData = JSON.parse(await responseData.text()) } catch { responseData = null }
+    }
+    const message = responseData?.detail || responseData?.message || '网络请求失败，请稍后重试'
     window.dispatchEvent(new CustomEvent('app-error', { detail: message }))
     return Promise.reject(new Error(message))
   },

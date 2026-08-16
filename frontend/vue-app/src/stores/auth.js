@@ -24,11 +24,19 @@ export const useAuthStore = defineStore('auth', {
   actions: {
     async login(credentials) {
       const session = await loginRequest(credentials)
-      this.token = session.access_token
-      localStorage.setItem(TOKEN_STORAGE_KEY, session.access_token)
+      const token = session.access_token
+      this.token = token
+      localStorage.setItem(TOKEN_STORAGE_KEY, token)
 
-      this.user = await getCurrentUser()
-      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(this.user))
+      try {
+        const user = await getCurrentUser()
+        this.user = user
+        localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user))
+      } catch (error) {
+        // 登录链路必须原子完成：用户信息读取失败时撤销已写入的会话。
+        this.logout()
+        throw error
+      }
     },
     logout() {
       this.token = ''

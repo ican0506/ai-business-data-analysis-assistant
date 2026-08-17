@@ -401,6 +401,43 @@ def test_deepseek_timeout_uses_configured_client_timeout_without_retries(monkeyp
     assert result is fallback
 
 
+def test_deepseek_request_enables_max_reasoning_without_temperature(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class SuccessfulCompletions:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content='{"summary": "深度分析摘要"}'))]
+            )
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SuccessfulCompletions()))
+    monkeypatch.setattr(
+        "app.services.ai_analysis_service.get_settings",
+        lambda: SimpleNamespace(
+            llm_provider="deepseek",
+            llm_api_key="test-key",
+            llm_base_url="https://api.deepseek.com",
+            llm_model="configured-deepseek-model",
+            llm_timeout_seconds=25,
+        ),
+    )
+    monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(OpenAI=lambda **_kwargs: client))
+
+    result = AIAnalysisService._generate_with_deepseek(
+        {"total_rows": 0},
+        {"supported_analyses": {}, "skipped_analyses": []},
+        {"mode": "rule_based"},
+    )
+
+    assert result["mode"] == "deepseek"
+    assert captured["model"] == "configured-deepseek-model"
+    assert captured["reasoning_effort"] == "max"
+    assert captured["extra_body"] == {"thinking": {"type": "enabled"}}
+    assert captured["response_format"] == {"type": "json_object"}
+    assert "temperature" not in captured
+
+
 def test_inventory_fallback_uses_only_real_inventory_metrics() -> None:
     insight = AIAnalysisService().analyze_metrics(inventory_metrics())
 

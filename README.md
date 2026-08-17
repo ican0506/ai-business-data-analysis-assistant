@@ -106,7 +106,7 @@ docker compose up --build -d
 | `MYSQL_DATABASE`、`MYSQL_PORT` | Compose 数据库名和端口 |
 | `FRONTEND_PORT`、`BACKEND_PORT` | Nginx 与 FastAPI 主机端口 |
 | `CORS_ALLOWED_ORIGINS` | 允许凭据访问的浏览器 Origin 白名单 |
-| `LLM_PROVIDER`、`LLM_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL`、`LLM_TIMEOUT_SECONDS` | 可选大模型配置；默认 25 秒超时且不自动重试，失败时降级规则分析 |
+| `LLM_PROVIDER`、`LLM_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL`、`LLM_TIMEOUT_SECONDS` | 可选大模型配置；DeepSeek 思考模式示例使用 `deepseek-v4-pro`，默认 25 秒超时且不自动重试，失败时降级规则分析 |
 
 `backend/.env.example` 用于本地后端，包含 MySQL、存储、上传大小、JWT 和 LLM 变量。`frontend/vue-app/.env.example` 用于前端 API 地址和 Vite 代理。所有 `.env` 文件均被 Git 忽略。
 

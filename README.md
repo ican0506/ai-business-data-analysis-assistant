@@ -27,13 +27,33 @@
 ```mermaid
 flowchart TD
   U[用户] --> V[Vue 3 前端]
-  V --> F[FastAPI 接口层]
-  F --> C[清洗与字段映射]
-  C --> E[AnalysisEngine / AnalysisPlanner]
-  E --> P[Pandas 指标计算]
-  P --> A[AI 解释服务]
-  P --> R[Excel / Word / PDF]
-  F --> M[(MySQL)]
+  V -->|REST API| F[FastAPI 接口层与业务编排]
+
+  F --> J[JWT 认证]
+  F --> D[数据集业务]
+  F --> O[操作日志 / 审计]
+  J --> M[(MySQL)]
+  D <--> M
+  O --> M
+
+  D <--> S[(Storage：原始 Excel/CSV 与清洗文件)]
+  D --> C[数据清洗与字段映射]
+  C -->|清洗记录、字段 override| M
+  C --> E[AnalysisEngine / AnalysisPlan]
+  E --> P[Pandas 确定性指标计算]
+  P --> K[KPI、趋势、统计与异常检测]
+
+  K --> A[AI 解释服务]
+  A -->|仅使用已计算的结构化指标| DS[DeepSeek V4 Pro 深度分析]
+  A -. 调用失败 .-> RF[规则引擎回退]
+  K --> R[报告导出：Excel / Word / PDF]
+
+  A --> X[分析结果]
+  RF --> X
+  K --> X
+  X --> F
+  R --> F
+  F --> V
 ```
 
 ## 当前支持领域

@@ -434,7 +434,8 @@ class AIAnalysisService:
             response = client.chat.completions.create(
                 model=settings.llm_model,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.2,
+                reasoning_effort="max",
+                extra_body={"thinking": {"type": "enabled"}},
                 response_format={"type": "json_object"},
             )
             generated = json.loads(response.choices[0].message.content or "{}")

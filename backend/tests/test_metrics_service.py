@@ -19,6 +19,7 @@ def test_full_sales_data_keeps_existing_metrics_and_reports_capabilities() -> No
             "order_id": ["O-1", "O-2", "O-3"],
             "product": ["A", "A", "B"],
             "quantity": [2, 3, 1],
+            "unit_price": [50, 200 / 3, 150],
             "sales_amount": [100, 200, 150],
             "target_amount": [120, 220, 160],
             "region": ["east", "east", "south"],
@@ -27,7 +28,7 @@ def test_full_sales_data_keeps_existing_metrics_and_reports_capabilities() -> No
     )
 
     assert metrics["available_fields"] == [
-        "order_id", "product", "quantity", "sales_amount", "target_amount", "region", "date"
+            "order_id", "product", "quantity", "unit_price", "sales_amount", "target_amount", "region", "date"
     ]
     assert metrics["sales_amount"]["total"] == 450.0
     assert metrics["completion_rate"] == 90.0
@@ -79,9 +80,17 @@ def test_unit_price_and_quantity_create_in_memory_sales_amount() -> None:
 
 def test_region_and_date_dependent_metrics_are_skipped_independently() -> None:
     without_region = build_metrics(
-        {"sales_amount": [100, 200], "date": ["2026-08-01", "2026-08-02"]}
+        {
+            "sales_amount": [100, 200], "unit_price": [50, 100], "quantity": [2, 2],
+            "date": ["2026-08-01", "2026-08-02"],
+        }
     )
-    without_date = build_metrics({"sales_amount": [100, 200], "region": ["east", "south"]})
+    without_date = build_metrics(
+        {
+            "sales_amount": [100, 200], "unit_price": [50, 100], "quantity": [2, 2],
+            "region": ["east", "south"],
+        }
+    )
 
     assert without_region["sales_amount"]["total"] == 300.0
     assert without_region["region_ranking"] == []
@@ -107,7 +116,12 @@ def test_null_sales_uses_alternative_only_when_it_is_available() -> None:
 
 
 def test_target_is_optional_for_region_sales_but_required_for_completion() -> None:
-    metrics = build_metrics({"sales_amount": [100, 200], "region": ["east", "south"]})
+    metrics = build_metrics(
+        {
+            "sales_amount": [100, 200], "unit_price": [50, 100], "quantity": [2, 2],
+            "region": ["east", "south"],
+        }
+    )
 
     assert metrics["completion_rate"] is None
     assert metrics["region_performance"] == [

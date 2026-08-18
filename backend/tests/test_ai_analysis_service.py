@@ -484,10 +484,18 @@ def test_order_analysis_context_and_deepseek_payload_keep_only_safe_aggregates()
             {"id": "data_quality_analysis", "name": "数据质量分析", "supported": True},
         ],
         "order_analysis": {
-            "overview": {"record_count": 2, "order_count": 2, "sales_total": 100.0, "average_order_value": 50.0},
+            "overview": {
+                "record_count": 2,
+                "order_count": 2,
+                "sales_total": 100.0,
+                "average_order_value": 50.0,
+                "verified_sales_total": 100.0,
+                "average_verified_order_value": 50.0,
+            },
             "customer_analysis": {"top_customers": [{"customer_id": "U-1", "customer_name": "张三", "order_count": 2, "sales_amount": 100.0}]},
             "data_quality": {
                 "amount_mismatch_count": 1,
+                "unverified_amount_total": 999999.99,
                 "phone_invalid_count": 1,
                 "email_invalid_count": 1,
                 "phone": "13800000000",
@@ -504,5 +512,28 @@ def test_order_analysis_context_and_deepseek_payload_keep_only_safe_aggregates()
     assert "customer_name" not in str(payload)
     assert "13800000000" not in str(payload)
     assert "private@example.com" not in str(payload)
-    assert "可信销售额 100.0" in insight["summary"]
+    assert "999999.99" not in str(payload)
+    assert "已验证销售额 100.0" in insight["summary"]
     assert "金额不一致" in insight["report"]
+
+
+def test_order_fallback_describes_verified_sales_and_unverified_amount_quality() -> None:
+    metrics = {
+        "total_rows": 2,
+        "selected_module": {"id": "order", "name": "订单分析"},
+        "analysis_plan": [
+            {"id": "order_count", "name": "订单数量分析", "supported": True},
+            {"id": "sales_total", "name": "销售额分析", "supported": True},
+            {"id": "data_quality_analysis", "name": "数据质量分析", "supported": True},
+        ],
+        "order_analysis": {
+            "overview": {"record_count": 2, "order_count": 2, "verified_sales_total": 160.0, "sales_total": 160.0, "average_verified_order_value": 160.0, "average_order_value": 160.0},
+            "data_quality": {"unverified_order_count": 1, "unverified_amount_total": 999999.99, "amount_mismatch_count": 1},
+        },
+    }
+
+    insight = AIAnalysisService().analyze_metrics(metrics)
+
+    assert "已验证销售额 160.0" in insight["summary"]
+    assert "无法验证" in insight["report"]
+    assert "999999.99" not in insight["summary"]

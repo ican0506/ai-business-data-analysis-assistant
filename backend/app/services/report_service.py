@@ -50,13 +50,13 @@ class ReportService:
         top_regions = [] if self._is_student_score(metrics) or self._is_inventory(metrics) else metrics.get("top_regions", [])
         if top_regions:
             sheet["D1"] = "区域"
-            sheet["E1"] = "销售额"
+            sheet["E1"] = "已验证销售额"
             for row, region in enumerate(top_regions, start=2):
                 sheet.cell(row=row, column=4, value=region["name"])
                 sheet.cell(row=row, column=5, value=region["value"])
             chart = BarChart()
-            chart.title = "区域销售额 TOP"
-            chart.y_axis.title = "销售额"
+            chart.title = "区域已验证销售额 TOP"
+            chart.y_axis.title = "已验证销售额"
             chart.x_axis.title = "区域"
             chart.add_data(Reference(sheet, min_col=5, min_row=1, max_row=len(top_regions) + 1), titles_from_data=True)
             chart.set_categories(Reference(sheet, min_col=4, min_row=2, max_row=len(top_regions) + 1))
@@ -127,21 +127,24 @@ class ReportService:
             for key, label in (
                 ("record_count", "记录数"),
                 ("order_count", "订单数量"),
-                ("sales_total", "可信销售额总计"),
-                ("average_order_value", "平均客单价"),
-                ("maximum_order_value", "最大订单金额"),
-                ("minimum_order_value", "最小订单金额"),
-                ("median_order_value", "订单金额中位数"),
-                ("valid_sales_order_count", "有效销售订单数"),
+                ("verified_sales_total", "已验证销售额总计"),
+                ("verified_order_count", "已验证订单数"),
+                ("average_verified_order_value", "已验证平均客单价"),
+                ("maximum_verified_order_value", "最大已验证订单金额"),
+                ("minimum_verified_order_value", "最小已验证订单金额"),
+                ("median_verified_order_value", "已验证订单金额中位数"),
+                ("unverified_order_count", "未验证金额订单数"),
+                ("unverified_amount_total", "未验证原始金额总计"),
+                ("amount_comparable_count", "可比较金额订单数"),
                 ("amount_mismatch_count", "金额不一致记录数"),
                 ("amount_mismatch_rate", "金额不一致率"),
-                ("gross_order_amount", "订单总金额"),
-                ("completed_sales_amount", "已完成订单金额"),
-                ("cancelled_order_amount", "已取消订单金额"),
-                ("refund_related_amount", "退款相关订单金额"),
+                ("completed_sales_amount", "已完成订单已验证金额"),
+                ("cancelled_order_amount", "已取消订单已验证金额"),
+                ("refund_related_amount", "退款相关订单已验证金额"),
             ):
                 if overview.get(key) is not None:
                     rows.append((label, overview[key]))
+            rows.append(("统计口径", "销售金额优先采用单价 × 数量 × 有效折扣计算得到的可验证金额；仅存在原始订单金额且无法验证的记录不计入已验证销售额。"))
             return rows
         sales = metrics.get("sales_amount")
         highest = metrics.get("highest_sales_region")
@@ -213,11 +216,11 @@ class ReportService:
             return []
         tables: list[tuple[str, list[str], list[list[object]]]] = []
         for key, title, headers, fields in (
-            ("product_analysis", "商品销售分析", ["商品", "订单数", "销量", "销售额"], ["name", "order_count", "quantity", "sales_amount"]),
-            ("category_analysis", "品类销售分析", ["品类", "订单数", "销量", "销售额", "销售占比"], ["category", "order_count", "quantity", "sales_amount", "sales_share"]),
-            ("region_analysis", "地区销售分析", ["地区", "订单数", "销量", "销售额", "平均客单价"], ["name", "region_order_count", "region_quantity", "region_sales", "region_average_order_value"]),
-            ("status_analysis", "订单状态分析", ["状态", "订单数", "订单金额", "订单占比"], ["name", "order_count", "sales_amount", "share"]),
-            ("payment_method_analysis", "支付方式分析", ["支付方式", "订单数", "订单金额", "订单占比", "销售额占比"], ["name", "order_count", "sales_amount", "order_share", "sales_share"]),
+            ("product_analysis", "商品销售分析", ["商品", "订单数", "销量", "已验证销售额"], ["name", "order_count", "quantity", "sales_amount"]),
+            ("category_analysis", "品类销售分析", ["品类", "订单数", "销量", "已验证销售额", "销售占比"], ["category", "order_count", "quantity", "sales_amount", "sales_share"]),
+            ("region_analysis", "地区销售分析", ["地区", "订单数", "销量", "已验证销售额", "已验证平均客单价"], ["name", "region_order_count", "region_quantity", "region_sales", "region_average_order_value"]),
+            ("status_analysis", "订单状态分析", ["状态", "订单数", "已验证订单金额", "订单占比"], ["name", "order_count", "sales_amount", "share"]),
+            ("payment_method_analysis", "支付方式分析", ["支付方式", "订单数", "已验证订单金额", "订单占比", "销售额占比"], ["name", "order_count", "sales_amount", "order_share", "sales_share"]),
         ):
             values = analysis.get(key) or []
             if values:
@@ -226,7 +229,7 @@ class ReportService:
         if isinstance(customer, dict) and customer.get("top_customers"):
             tables.append((
                 "客户复购分析",
-                ["客户编号", "订单数", "销售额"],
+                ["客户编号", "订单数", "已验证销售额"],
                 [[item.get("customer_id"), item.get("order_count"), item.get("sales_amount")] for item in customer["top_customers"]],
             ))
         time_analysis = analysis.get("time_analysis") or {}
@@ -402,11 +405,11 @@ class ReportService:
             [item["name"] for item in regions],
             [item["value"] for item in regions],
             color="#2563EB",
-            label="区域销售额",
+            label="区域已验证销售额",
         )
-        axis.set_title("区域销售额 TOP", fontproperties=chinese_font)
+        axis.set_title("区域已验证销售额 TOP", fontproperties=chinese_font)
         axis.set_xlabel("区域", fontproperties=chinese_font)
-        axis.set_ylabel("销售额", fontproperties=chinese_font)
+        axis.set_ylabel("已验证销售额", fontproperties=chinese_font)
         axis.legend(prop=chinese_font)
         for label in axis.get_xticklabels():
             label.set_fontproperties(chinese_font)
@@ -521,7 +524,7 @@ class ReportService:
                     cells[index].text = str(value)
         chart = None if self._is_student_score(metrics) or self._is_inventory(metrics) else self._build_region_chart(metrics)
         if chart is not None:
-            doc.add_heading("区域销售额图表", 1)
+            doc.add_heading("区域已验证销售额图表", 1)
             doc.add_picture(chart)
         for title, content in [("数据摘要", analysis["summary"]), ("异常发现", "；".join(analysis["anomalies"])), ("业务问题", "；".join(analysis["business_problems"])), ("优化建议", "；".join(analysis["recommendations"]))]:
             doc.add_heading(title, 1); doc.add_paragraph(content)

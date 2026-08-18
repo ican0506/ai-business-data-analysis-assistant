@@ -188,6 +188,10 @@ class OrderAnalyzer:
         valid_count = int(len(verified_orders))
         verified_sales_total = OrderAnalyzer._round(values.sum()) if not values.empty else None
         average_verified_order_value = OrderAnalyzer._round(values.mean()) if not values.empty else None
+        unverified_order_count = int(quality["unverified_order_count"])
+        no_usable_amount_order_count = int(
+            (~order_level["has_verified_amount"] & ~order_level["has_unverified_amount"]).sum()
+        )
         return {
             "record_count": int(quality["row_count"]),
             "order_count": order_count,
@@ -203,7 +207,9 @@ class OrderAnalyzer:
             "minimum_order_value": OrderAnalyzer._round(values.min()) if not values.empty else None,
             "median_order_value": OrderAnalyzer._round(values.median()) if not values.empty else None,
             "valid_sales_order_count": valid_count,
-            "unverified_order_count": int(quality["unverified_order_count"]),
+            "unverified_order_count": unverified_order_count,
+            "no_usable_amount_order_count": no_usable_amount_order_count,
+            "amount_verification_rate": OrderAnalyzer._round(valid_count / order_count * 100) if order_count else None,
             "unverified_amount_total": quality["unverified_amount_total"],
             "amount_comparable_count": int(quality["amount_comparable_count"]),
             "amount_mismatch_count": int(quality["amount_mismatch_count"]),

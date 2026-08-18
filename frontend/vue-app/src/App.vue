@@ -26,8 +26,16 @@ function logout() {
 }
 
 function showGlobalError(event) { ElMessage.error(event.detail || '请求失败，请稍后重试。') }
+function handleSessionExpired() {
+  auth.logout()
+  if (route.name !== 'login') router.replace({ name: 'login' })
+}
 onMounted(() => window.addEventListener('app-error', showGlobalError))
-onBeforeUnmount(() => window.removeEventListener('app-error', showGlobalError))
+onMounted(() => window.addEventListener('session-expired', handleSessionExpired))
+onBeforeUnmount(() => {
+  window.removeEventListener('app-error', showGlobalError)
+  window.removeEventListener('session-expired', handleSessionExpired)
+})
 </script>
 
 <template>

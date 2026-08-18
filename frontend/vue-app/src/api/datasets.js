@@ -1,5 +1,10 @@
 import http from './http'
 
+export async function getDatasets() {
+  const response = await http.get('/api/v1/datasets')
+  return response.data
+}
+
 export async function uploadDataset(file, onProgress) {
   const formData = new FormData()
   formData.append('file', file)
@@ -44,7 +49,12 @@ export async function downloadDatasetReport(datasetId, reportType) {
   const path = reportType === 'excel'
     ? `/api/v1/datasets/${datasetId}/reports/excel`
     : `/api/v1/datasets/${datasetId}/reports/${reportType}`
-  const response = await http.get(path, { responseType: 'blob', returnRawResponse: true })
+  const response = await http.get(path, {
+    responseType: 'blob',
+    returnRawResponse: true,
+    timeout: 120000,
+    timeoutMessage: '报告生成超时，请稍后重试。',
+  })
   const disposition = response.headers['content-disposition'] || ''
   const match = disposition.match(/filename\*?=(?:UTF-8''|\")?([^;\"]+)/i)
   return {

@@ -7,6 +7,7 @@ vi.mock('../api/auth', () => ({
 }))
 
 import { getCurrentUser, loginRequest } from '../api/auth'
+import { useAnalysisStore } from './analysis'
 import { TOKEN_STORAGE_KEY, useAuthStore } from './auth'
 
 describe('认证状态', () => {
@@ -39,5 +40,24 @@ describe('认证状态', () => {
     expect(auth.token).toBe('')
     expect(auth.user).toBeNull()
     expect(localStorage.getItem(TOKEN_STORAGE_KEY)).toBeNull()
+  })
+
+  it('登出时清除当前用户的运行时分析状态', () => {
+    const auth = useAuthStore()
+    const analysis = useAnalysisStore()
+    auth.token = 'demo-jwt-token'
+    auth.user = { id: 1, username: 'user_a' }
+    analysis.datasetId = 11
+    analysis.metrics = { selected_module: { id: 'order' } }
+    analysis.fieldMapping = { overrides: { 总评: 'score' } }
+    analysis.mappingDialogVisible = true
+
+    auth.logout()
+
+    expect(auth.user).toBeNull()
+    expect(analysis.datasetId).toBeNull()
+    expect(analysis.metrics).toBeNull()
+    expect(analysis.fieldMapping).toBeNull()
+    expect(analysis.mappingDialogVisible).toBe(false)
   })
 })

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pandas as pd
 
 from app.services.metrics_service import MetricsService
@@ -308,3 +310,23 @@ def test_chinese_inventory_data_runs_inventory_analysis_without_order_or_student
     assert metrics["inventory_analysis"]["warehouse_stock"] == [{"name": "郑州仓", "value": 35.0}]
     assert metrics["sales_amount"] is None
     assert metrics["student_score_analysis"] is None
+
+
+def test_build_metrics_uses_the_latest_cleaning_run_file(monkeypatch, tmp_path) -> None:
+    storage_root = tmp_path / "storage"
+    storage_root.mkdir()
+    (storage_root / "run-1.csv").write_text("order_id,unit_price,quantity\nO-1,10,10\n", encoding="utf-8-sig")
+    (storage_root / "run-2.csv").write_text("order_id,unit_price,quantity\nO-1,20,10\n", encoding="utf-8-sig")
+    newest_run = SimpleNamespace(dataset_id=7, cleaned_storage_path="run-2.csv")
+    db = SimpleNamespace(scalar=lambda _statement: newest_run)
+    monkeypatch.setattr(
+        "app.services.metrics_service.get_settings",
+        lambda: SimpleNamespace(resolved_storage_root=storage_root),
+    )
+
+    metrics = MetricsService(
+        override_service=SimpleNamespace(get_overrides=lambda *_args: {})
+    ).build_metrics(db, SimpleNamespace(id=7))
+
+    assert metrics["dataset_id"] == 7
+    assert metrics["sales_amount"]["total"] == 200.0

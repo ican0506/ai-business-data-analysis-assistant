@@ -44,6 +44,7 @@ def test_order_analyzer_uses_trusted_amount_and_keeps_duplicate_quality_facts() 
     assert overview["verified_sales_total"] == 180.0
     assert overview["sales_total"] == 180.0
     assert overview["verified_order_count"] == 2
+    assert overview["amount_verification_rate"] == 50.0
     assert overview["average_verified_order_value"] == 90.0
     assert overview["average_order_value"] == 90.0
     assert overview["amount_mismatch_count"] == 1

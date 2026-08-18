@@ -5,7 +5,7 @@ vi.mock('./http', () => ({
 }))
 
 import http from './http'
-import { analyzeDataset, cleanDataset } from './datasets'
+import { analyzeDataset, cleanDataset, downloadDatasetReport, getDatasets } from './datasets'
 
 describe('数据集 API 请求配置', () => {
   beforeEach(() => {
@@ -27,5 +27,20 @@ describe('数据集 API 请求配置', () => {
     await cleanDataset(12)
 
     expect(http.post).toHaveBeenCalledWith('/api/v1/datasets/12/clean')
+  })
+
+  it('从后端读取当前用户的数据集，并为报告下载配置 120 秒超时', async () => {
+    http.get.mockResolvedValueOnce({ data: [{ id: 12 }] }).mockResolvedValueOnce({ data: new Blob(['report']), headers: {} })
+
+    await getDatasets()
+    await downloadDatasetReport(12, 'pdf')
+
+    expect(http.get).toHaveBeenNthCalledWith(1, '/api/v1/datasets')
+    expect(http.get).toHaveBeenNthCalledWith(2, '/api/v1/datasets/12/reports/pdf', {
+      responseType: 'blob',
+      returnRawResponse: true,
+      timeout: 120000,
+      timeoutMessage: '报告生成超时，请稍后重试。',
+    })
   })
 })

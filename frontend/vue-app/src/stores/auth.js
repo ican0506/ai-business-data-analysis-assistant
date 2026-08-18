@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 
 import { getCurrentUser, loginRequest } from '../api/auth'
+import { useAnalysisStore } from './analysis'
 
 export const TOKEN_STORAGE_KEY = 'ai_insight_token'
 const USER_STORAGE_KEY = 'ai_insight_user'
@@ -39,6 +40,7 @@ export const useAuthStore = defineStore('auth', {
       }
     },
     logout() {
+      useAnalysisStore().$reset()
       this.token = ''
       this.user = null
       localStorage.removeItem(TOKEN_STORAGE_KEY)

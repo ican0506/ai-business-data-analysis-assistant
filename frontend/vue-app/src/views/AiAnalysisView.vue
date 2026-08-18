@@ -1,24 +1,27 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 
-import { analyzeDataset } from '../api/datasets'
+import { analyzeDataset, getDatasets } from '../api/datasets'
 import AnalysisLoading from '../components/reports/AnalysisLoading.vue'
 import AiSummaryCard from '../components/reports/AiSummaryCard.vue'
 import BusinessSuggestion from '../components/reports/BusinessSuggestion.vue'
 import RiskAnalysisPanel from '../components/reports/RiskAnalysisPanel.vue'
-import { getActiveDatasetId, loadDatasetHistory } from '../utils/datasetHistory'
+import { useAuthStore } from '../stores/auth'
+import { getActiveDatasetId, setActiveDatasetId, toDatasetRecord } from '../utils/datasetHistory'
 import { loadAnalysisResult, saveAnalysisResult } from '../utils/analysisHistory'
 
 const route = useRoute()
+const router = useRouter()
+const auth = useAuthStore()
 const analyzing = ref(false)
 const errorMessage = ref('')
 const cachedResult = ref(null)
-const records = ref(loadDatasetHistory())
+const records = ref([])
 
 const selectedDataset = computed(() => {
-  const queryId = Number(route.query.datasetId) || getActiveDatasetId()
+  const queryId = Number(route.query.datasetId) || getActiveDatasetId(auth.user?.id)
   return records.value.find((item) => item.id === queryId) || records.value[0] || null
 })
 const report = computed(() => cachedResult.value?.report || null)
@@ -27,8 +30,19 @@ const analysisStatus = computed(() => analyzing.value ? '分析中' : report.val
 
 watch(selectedDataset, (dataset) => {
   errorMessage.value = ''
-  cachedResult.value = dataset ? loadAnalysisResult(dataset.id) : null
+  cachedResult.value = dataset ? loadAnalysisResult(auth.user?.id, dataset.id) : null
 }, { immediate: true })
+
+async function loadDatasets() {
+  records.value = (await getDatasets()).map(toDatasetRecord)
+  const preferredId = Number(route.query.datasetId) || getActiveDatasetId(auth.user?.id)
+  const selected = records.value.find((item) => item.id === preferredId) || records.value[0] || null
+  if (selected) {
+    setActiveDatasetId(auth.user?.id, selected.id)
+    if (Number(route.query.datasetId) !== selected.id) await router.replace({ query: { ...route.query, datasetId: String(selected.id) } })
+  }
+}
+onMounted(() => { void loadDatasets() })
 
 async function runAnalysis() {
   if (!selectedDataset.value) return
@@ -36,7 +50,7 @@ async function runAnalysis() {
   errorMessage.value = ''
   try {
     const result = await analyzeDataset(selectedDataset.value.id)
-    cachedResult.value = saveAnalysisResult(selectedDataset.value.id, result)
+    cachedResult.value = saveAnalysisResult(auth.user?.id, selectedDataset.value.id, result)
     ElMessage.success('AI 分析报告已生成。')
   } catch (error) {
     errorMessage.value = error.message || 'AI 分析失败，请检查数据集状态后重试。'
@@ -57,7 +71,7 @@ async function runAnalysis() {
       <template #header><div class="context-header"><strong>当前数据集</strong><el-tag :type="analysisStatus === '分析完成' ? 'success' : analysisStatus === '分析失败' ? 'danger' : 'info'" effect="light">{{ analysisStatus }}</el-tag></div></template>
       <el-empty v-if="!selectedDataset" :image-size="56" description="暂无可分析的数据集，请先在数据集管理页上传文件。" />
       <el-descriptions v-else :column="4" border>
-        <el-descriptions-item label="文件名称">{{ selectedDataset.fileName }}</el-descriptions-item>
+        <el-descriptions-item label="文件名称">{{ selectedDataset.fileName }} · 数据集 #{{ selectedDataset.id }}</el-descriptions-item>
         <el-descriptions-item label="数据更新时间">{{ selectedDataset.uploadedAt || '--' }}</el-descriptions-item>
         <el-descriptions-item label="数据规模">{{ selectedDataset.rowCount ?? '--' }} 行 / {{ selectedDataset.columnCount ?? '--' }} 列</el-descriptions-item>
         <el-descriptions-item label="分析模式">{{ report?.mode === 'deepseek' ? 'DeepSeek' : report ? '规则分析' : '--' }}</el-descriptions-item>

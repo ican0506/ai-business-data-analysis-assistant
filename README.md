@@ -60,12 +60,19 @@ flowchart TD
 
 | 领域 | 输出 |
 | --- | --- |
-| Order | 订单数、销售额、商品销量、区域排行、趋势与完成率（字段可用时） |
+| Order | 订单统计、可信销售额、客单价、商品/品类/地区分析、时间趋势、客户复购、状态/支付/折扣分析与数据质量检查（字段可用时） |
 | StudentScore | 学生数、成绩概览、学科/班级/学生聚合、考试趋势（字段可用时） |
 | Inventory | 库存概览、低库存、库存价值、分类/仓库/供应商汇总（字段可用时） |
 | Generic | 行数、列画像、缺失值分析；是合法 fallback，不是系统错误 |
 
 `null` / `—` 表示不可分析或不适用，**不等于 0**；真实计算值为 `0` 会原样保留。Python / Pandas 是指标真值来源，AI 不计算或编造核心指标。
+
+### 订单分析口径
+
+- 支持确定性字段映射：`user_id → customer_id`、`user_name → customer_name`、`city → region`、`order_time → date`、`order_amount → sales_amount`，以及分类、折扣、支付方式、性别、年龄等常见订单字段。
+- 销售统计使用可信金额：行内 `unit_price`、`quantity`、`discount` 都有效时优先计算 `unit_price × quantity × discount`；整个数据集没有折扣列时按 `unit_price × quantity`；无法计算但 `order_amount` 有效时才使用该原始金额。两者同时存在且不一致会被记录，不会静默覆盖。
+- `record_count` 是实际记录行数，`order_count` 优先按非空 `order_id` 去重；完整重复行、重复订单号、非法日期/价格/数量/折扣/年龄/状态和金额不一致均在数据质量结果中说明。
+- AI 只读取 Pandas 已计算的聚合结果，不接收原始整表、手机号、邮箱或备注；它负责解释、风险提示和建议，不重算销售额或编造业务指标。
 
 ## 快速开始
 

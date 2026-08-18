@@ -13,6 +13,18 @@ ORDER_ANALYSIS_CAPABILITIES: tuple[AnalysisCapability, ...] = (
         all_of=("product", "quantity"),
     ),
     AnalysisCapability(
+        id="product_sales",
+        name="商品销售分析",
+        all_of=("product",),
+        any_of=(("sales_amount",), ("unit_price", "quantity")),
+    ),
+    AnalysisCapability(
+        id="category_analysis",
+        name="品类销售分析",
+        all_of=("category",),
+        any_of=(("sales_amount",), ("unit_price", "quantity")),
+    ),
+    AnalysisCapability(
         id="sales_total",
         name="销售额分析",
         any_of=(("sales_amount",), ("unit_price", "quantity")),
@@ -35,7 +47,30 @@ ORDER_ANALYSIS_CAPABILITIES: tuple[AnalysisCapability, ...] = (
         all_of=("target_amount",),
         any_of=(("sales_amount",), ("unit_price", "quantity")),
     ),
-    AnalysisCapability(id="customer_analysis", name="客户分析", all_of=("customer_id",)),
+    AnalysisCapability(
+        id="customer_analysis",
+        name="客户分析",
+        all_of=("customer_id", "order_id"),
+    ),
+    AnalysisCapability(id="status_analysis", name="订单状态分析", all_of=("status",)),
+    AnalysisCapability(
+        id="payment_method_analysis",
+        name="支付方式分析",
+        all_of=("payment_method",),
+        any_of=(("sales_amount",), ("unit_price", "quantity")),
+    ),
+    AnalysisCapability(
+        id="discount_analysis",
+        name="折扣分析",
+        all_of=("discount",),
+        any_of=(("sales_amount",), ("unit_price", "quantity")),
+    ),
+    AnalysisCapability(
+        id="demographic_analysis",
+        name="客户画像分析",
+        any_of=(("gender",), ("age",)),
+    ),
+    AnalysisCapability(id="data_quality_analysis", name="数据质量分析"),
     AnalysisCapability(id="refund_analysis", name="退款分析", all_of=("status",)),
 )
 

@@ -247,7 +247,7 @@ class AIAnalysisService:
         quality = supported.get("data_quality_analysis")
         if isinstance(quality, dict):
             quality_messages = []
-            for key, label in (("duplicate_row_count", "完整重复行"), ("duplicate_order_id_count", "重复订单号"), ("invalid_date_count", "无效日期"), ("amount_mismatch_count", "金额不一致记录")):
+            for key, label in (("duplicate_row_count", "完整重复行"), ("duplicate_order_id_count", "重复订单号"), ("invalid_date_count", "无效日期"), ("amount_mismatch_count", "金额不一致记录"), ("phone_invalid_count", "无效联系方式"), ("email_invalid_count", "无效邮箱")):
                 value = quality.get(key, 0)
                 if value:
                     quality_messages.append(f"{label} {value} 条")
@@ -501,6 +501,8 @@ class AIAnalysisService:
         sanitized_order_analysis = json.loads(json.dumps(order_analysis, ensure_ascii=False))
         for customer in (sanitized_order_analysis.get("customer_analysis") or {}).get("top_customers", []):
             customer.pop("customer_name", None)
+        for key in ("phone", "email", "mobile", "telephone"):
+            (sanitized_order_analysis.get("data_quality") or {}).pop(key, None)
         return {
             "selected_module": selected_module,
             "available_fields": analysis_context.get("available_fields", []),

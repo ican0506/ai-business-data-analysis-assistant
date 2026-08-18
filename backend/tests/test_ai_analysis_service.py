@@ -486,7 +486,13 @@ def test_order_analysis_context_and_deepseek_payload_keep_only_safe_aggregates()
         "order_analysis": {
             "overview": {"record_count": 2, "order_count": 2, "sales_total": 100.0, "average_order_value": 50.0},
             "customer_analysis": {"top_customers": [{"customer_id": "U-1", "customer_name": "张三", "order_count": 2, "sales_amount": 100.0}]},
-            "data_quality": {"amount_mismatch_count": 1},
+            "data_quality": {
+                "amount_mismatch_count": 1,
+                "phone_invalid_count": 1,
+                "email_invalid_count": 1,
+                "phone": "13800000000",
+                "email": "private@example.com",
+            },
         },
     }
 
@@ -496,5 +502,7 @@ def test_order_analysis_context_and_deepseek_payload_keep_only_safe_aggregates()
 
     assert context["supported_analyses"]["sales_total"]["total"] == 100.0
     assert "customer_name" not in str(payload)
+    assert "13800000000" not in str(payload)
+    assert "private@example.com" not in str(payload)
     assert "可信销售额 100.0" in insight["summary"]
     assert "金额不一致" in insight["report"]

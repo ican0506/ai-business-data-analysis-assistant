@@ -258,7 +258,8 @@ def test_real_ecommerce_headers_run_order_analysis_with_trusted_amount() -> None
     assert metrics["order_analysis"]["overview"]["amount_mismatch_count"] == 1
     assert metrics["order_analysis"]["region_analysis"][0]["name"] == "郑州"
     assert metrics["order_analysis"]["status_summary"]["refund_order_count"] == 1
-    assert "phone" in metrics["field_mapping"]["unmapped_columns"]
+    assert "phone" not in metrics["field_mapping"]["unmapped_columns"]
+    assert "email" not in metrics["field_mapping"]["unmapped_columns"]
     assert all("phone" not in item.get("matched_fields", []) for item in metrics["analysis_plan"])
 
 

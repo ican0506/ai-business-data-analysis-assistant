@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+import re
+import unicodedata
 
 import pandas as pd
 
@@ -19,6 +21,22 @@ class OrderAnalyzer:
     _REGION_MAP = {
         "郑州市": "郑州", "zhengzhou": "郑州",
         "洛阳市": "洛阳", "luoyang": "洛阳",
+        "南阳市": "南阳", "nanyang": "南阳",
+        "开封市": "开封", "kaifeng": "开封",
+        "安阳市": "安阳", "anyang": "安阳",
+        "新乡市": "新乡", "xinxiang": "新乡",
+        "焦作市": "焦作", "jiaozuo": "焦作",
+        "许昌市": "许昌", "xuchang": "许昌",
+        "周口市": "周口", "zhoukou": "周口",
+        "平顶山市": "平顶山", "pingdingshan": "平顶山",
+        "三门峡市": "三门峡", "sanmenxia": "三门峡",
+        "商丘市": "商丘", "shangqiu": "商丘",
+        "濮阳市": "濮阳", "puyang": "濮阳",
+        "鹤壁市": "鹤壁", "hebi": "鹤壁",
+        "漯河市": "漯河", "luohe": "漯河",
+        "信阳市": "信阳", "xinyang": "信阳",
+        "驻马店市": "驻马店", "zhumadian": "驻马店",
+        "济源市": "济源", "jiyuan": "济源",
     }
     _SENSITIVE_COLUMNS = {"phone", "email", "remark"}
 
@@ -67,6 +85,8 @@ class OrderAnalyzer:
         rows["_discount"] = self._number(rows, "discount")
         rows["_raw_amount"] = self._number(rows, "sales_amount")
         rows["_status"] = self._text(rows, "status").map(self._normalize_status)
+        phone_quality = self._contact_quality(rows, "phone", self._is_valid_phone)
+        email_quality = self._contact_quality(rows, "email", self._is_valid_email)
 
         has_discount_column = "discount" in rows
         valid_price = rows["_unit_price"].notna() & rows["_unit_price"].ge(0)
@@ -121,7 +141,20 @@ class OrderAnalyzer:
             "invalid_age_count": self._invalid_age_count(rows),
             "invalid_status_count": int(invalid_status.sum()) if "status" in rows else 0,
             "amount_mismatch_count": int(rows.loc[~rows["_duplicate_row"], "_amount_mismatch"].sum()),
+            **phone_quality,
+            **email_quality,
+            "contact_complete_count": int(
+                (phone_quality["_valid_mask"] & email_quality["_valid_mask"]).sum()
+            ),
+            "contact_complete_rate": self._round(
+                (phone_quality["_valid_mask"] & email_quality["_valid_mask"]).sum()
+                / len(rows) * 100
+            ) if len(rows) else None,
         }
+        quality.pop("_valid_mask")
+        # Temporary validation masks never leave this local preparation result.
+        for contact_quality in (phone_quality, email_quality):
+            contact_quality.pop("_valid_mask")
         return rows, quality
 
     @staticmethod
@@ -354,13 +387,59 @@ class OrderAnalyzer:
     def _number(rows: pd.DataFrame, column: str) -> pd.Series:
         return pd.to_numeric(rows[column], errors="coerce") if column in rows else pd.Series(float("nan"), index=rows.index)
 
+    @classmethod
+    def _date(cls, rows: pd.DataFrame, column: str) -> pd.Series:
+        return cls._parse_order_dates(rows[column]) if column in rows else pd.Series(pd.NaT, index=rows.index)
+
     @staticmethod
-    def _date(rows: pd.DataFrame, column: str) -> pd.Series:
-        return pd.to_datetime(rows[column], errors="coerce", format="mixed") if column in rows else pd.Series(pd.NaT, index=rows.index)
+    def _parse_order_dates(values: pd.Series) -> pd.Series:
+        """Parse common order date representations on an in-memory Series only."""
+        normalized = values.copy()
+        text_mask = normalized.notna() & normalized.map(lambda value: isinstance(value, str))
+        normalized.loc[text_mask] = (
+            normalized.loc[text_mask]
+            .astype("string")
+            .str.replace("年", "-", regex=False)
+            .str.replace("月", "-", regex=False)
+            .str.replace("日", " ", regex=False)
+            .str.replace(r"[/.]", "-", regex=True)
+            .str.replace(r"\s+", " ", regex=True)
+            .str.strip()
+        )
+        return pd.to_datetime(normalized, errors="coerce", format="mixed")
 
     @staticmethod
     def _invalid_date_count(frame: pd.DataFrame, rows: pd.DataFrame) -> int:
         return int((frame["date"].notna() & rows["_date"].isna()).sum()) if "date" in frame else 0
+
+    @staticmethod
+    def _contact_quality(
+        rows: pd.DataFrame,
+        column: str,
+        validator: object,
+    ) -> dict[str, object]:
+        values = OrderAnalyzer._text(rows, column)
+        present = values.notna()
+        valid = values.map(validator) if present.any() else pd.Series(False, index=rows.index)
+        valid = valid.fillna(False).astype(bool) & present
+        return {
+            f"{column}_present_count": int(present.sum()),
+            f"{column}_missing_count": int((~present).sum()),
+            f"{column}_valid_count": int(valid.sum()),
+            f"{column}_invalid_count": int((present & ~valid).sum()),
+            "_valid_mask": valid,
+        }
+
+    @staticmethod
+    def _is_valid_phone(value: object) -> bool:
+        normalized = re.sub(r"[\s\-()]", "", str(value))
+        if normalized.startswith("+"):
+            normalized = normalized[1:]
+        return normalized.isdigit() and 7 <= len(normalized) <= 15
+
+    @staticmethod
+    def _is_valid_email(value: object) -> bool:
+        return bool(re.fullmatch(r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+", str(value)))
 
     @staticmethod
     def _invalid_age_count(rows: pd.DataFrame) -> int:
@@ -371,7 +450,7 @@ class OrderAnalyzer:
     def _normalize_region(cls, value: object) -> object:
         if pd.isna(value):
             return pd.NA
-        text = str(value).strip()
+        text = re.sub(r"\s+", " ", unicodedata.normalize("NFKC", str(value)).strip())
         return cls._REGION_MAP.get(text.casefold(), text)
 
     @classmethod

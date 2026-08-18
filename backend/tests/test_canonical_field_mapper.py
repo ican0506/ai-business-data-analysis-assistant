@@ -64,7 +64,7 @@ def test_maps_chinese_order_and_normalizes_english_header_variants() -> None:
     assert metadata["conflicts"] == []
 
 
-def test_maps_real_ecommerce_order_aliases_without_mapping_personal_contacts() -> None:
+def test_maps_real_ecommerce_order_aliases_including_contact_quality_fields() -> None:
     frame = pd.DataFrame({
         "user_id": ["U-1"], "user_name": ["张三"], "city": ["郑州市"],
         "order_amount": [90], "order_status": ["已完成"], "order_time": ["2026-08-01"],
@@ -76,7 +76,29 @@ def test_maps_real_ecommerce_order_aliases_without_mapping_personal_contacts() -
 
     assert {"customer_id", "customer_name", "region", "sales_amount", "status", "date", "category", "discount", "payment_method"} <= set(mapped.columns)
     assert {"phone", "email", "remark"} <= set(mapped.columns)
-    assert {"phone", "email", "remark"} <= set(metadata["unmapped_columns"])
+    assert metadata["unmapped_columns"] == ["remark"]
+
+
+def test_maps_phone_and_email_aliases_to_canonical_fields() -> None:
+    frame = pd.DataFrame({
+        "手机号": ["13800000000"],
+        "邮箱": ["demo@example.com"],
+        "订单号": ["O-1"],
+        "商品": ["键盘"],
+    })
+
+    mapped, metadata = CanonicalFieldMapper().map_dataframe(frame)
+
+    assert list(mapped.columns) == ["phone", "email", "order_id", "product"]
+    assert {item["source"]: item["target"] for item in metadata["mappings"]} == {
+        "手机号": "phone", "邮箱": "email", "订单号": "order_id", "商品": "product",
+    }
+
+
+def test_maps_mobile_alias_to_phone() -> None:
+    mapped, _metadata = CanonicalFieldMapper().map_dataframe(pd.DataFrame({"mobile": ["13800000000"]}))
+
+    assert list(mapped.columns) == ["phone"]
 
 
 def test_preserves_canonical_column_and_records_canonical_alias_conflict() -> None:

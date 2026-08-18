@@ -239,7 +239,19 @@ class ReportService:
             tables.append(("折扣分析", list(discount.keys()), [list(discount.values())]))
         quality = analysis.get("data_quality")
         if isinstance(quality, dict):
-            rows = [[key, value] for key, value in quality.items() if key != "missing_value_summary"]
+            labels = {
+                "contact_complete_rate": "联系方式完整率(%)",
+                "contact_complete_count": "联系方式完整记录数",
+                "phone_invalid_count": "无效联系方式数",
+                "email_invalid_count": "无效邮箱数",
+                "phone_missing_count": "缺失联系方式数",
+                "email_missing_count": "缺失邮箱数",
+            }
+            rows = [
+                [labels.get(key, key), value]
+                for key, value in quality.items()
+                if key != "missing_value_summary" and not isinstance(value, (dict, list))
+            ]
             if quality.get("missing_value_summary"):
                 rows.append(["missing_value_summary", "；".join(f"{key}:{value}" for key, value in quality["missing_value_summary"].items())])
             if rows:

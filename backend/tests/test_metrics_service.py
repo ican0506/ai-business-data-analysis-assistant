@@ -160,7 +160,7 @@ def test_student_score_data_does_not_run_order_metrics() -> None:
 def test_generic_data_returns_base_profile_without_order_metrics() -> None:
     metrics = build_metrics(
         {
-            "city": ["Shanghai", None],
+            "location_label": ["Shanghai", None],
             "temperature": [30, None],
             "timestamp": ["2026-08-01", "2026-08-02"],
         }
@@ -173,12 +173,12 @@ def test_generic_data_returns_base_profile_without_order_metrics() -> None:
     assert metrics["generic_analysis"] == {
         "row_count": 2,
         "column_profile": [
-            {"name": "city", "dtype": "object", "non_null_count": 1, "null_count": 1},
+                {"name": "location_label", "dtype": "object", "non_null_count": 1, "null_count": 1},
             {"name": "temperature", "dtype": "float64", "non_null_count": 1, "null_count": 1},
             {"name": "timestamp", "dtype": "object", "non_null_count": 2, "null_count": 0},
         ],
         "missing_value_analysis": [
-            {"column": "city", "missing_count": 1, "missing_rate": 50.0},
+                {"column": "location_label", "missing_count": 1, "missing_rate": 50.0},
             {"column": "temperature", "missing_count": 1, "missing_rate": 50.0},
             {"column": "timestamp", "missing_count": 0, "missing_rate": 0.0},
         ],
@@ -241,14 +241,35 @@ def test_chinese_order_headers_keep_derived_sales_calculation_on_mapped_frame() 
     }
 
 
+def test_real_ecommerce_headers_run_order_analysis_with_trusted_amount() -> None:
+    metrics = build_metrics(
+        {
+            "order_id": ["O-1", "O-2"], "user_id": ["U-1", "U-2"],
+            "city": ["郑州市", "洛阳市"], "product": ["鼠标", "键盘"],
+            "商品分类": ["数码", "数码"], "unit_price": [100, 50], "quantity": [2, 1],
+            "discount": [0.9, 1], "order_amount": [999, 50], "order_status": ["已完成", "已退款"],
+            "order_time": ["2026-08-01", "2026-08-02"], "payment_method": ["微信", "支付宝"],
+            "phone": ["13800000000", "13900000000"], "email": ["a@example.com", "b@example.com"],
+        }
+    )
+
+    assert metrics["selected_module"]["id"] == "order"
+    assert metrics["sales_amount"]["total"] == 230.0
+    assert metrics["order_analysis"]["overview"]["amount_mismatch_count"] == 1
+    assert metrics["order_analysis"]["region_analysis"][0]["name"] == "郑州"
+    assert metrics["order_analysis"]["status_summary"]["refund_order_count"] == 1
+    assert "phone" in metrics["field_mapping"]["unmapped_columns"]
+    assert all("phone" not in item.get("matched_fields", []) for item in metrics["analysis_plan"])
+
+
 def test_unknown_chinese_columns_remain_generic_and_are_reported_as_unmapped() -> None:
-    metrics = build_metrics({"城市": ["上海"], "温度": [30], "备注": ["晴"]})
+    metrics = build_metrics({"地点标签": ["上海"], "温度": [30], "备注": ["晴"]})
 
     assert metrics["selected_module"]["id"] == "generic"
-    assert metrics["generic_analysis"]["column_profile"][0]["name"] == "城市"
+    assert metrics["generic_analysis"]["column_profile"][0]["name"] == "地点标签"
     assert metrics["field_mapping"] == {
         "mappings": [],
-        "unmapped_columns": ["城市", "温度", "备注"],
+        "unmapped_columns": ["地点标签", "温度", "备注"],
         "conflicts": [],
     }
 

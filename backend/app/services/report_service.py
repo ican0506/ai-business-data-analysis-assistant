@@ -32,6 +32,7 @@ class ReportService:
         if skipped_analyses:
             sheet.append(["本次未分析指标", "；".join(skipped_analyses)])
         for title, headers, rows in [
+            *self._order_tables(metrics),
             *self._student_score_tables(metrics),
             *self._inventory_tables(metrics),
         ]:
@@ -119,6 +120,29 @@ class ReportService:
                     ]
                 )
             return rows
+        order_analysis = ReportService._order_analysis(metrics)
+        if order_analysis:
+            overview = order_analysis.get("overview") or {}
+            rows: list[tuple[str, str | float | int | None]] = []
+            for key, label in (
+                ("record_count", "记录数"),
+                ("order_count", "订单数量"),
+                ("sales_total", "可信销售额总计"),
+                ("average_order_value", "平均客单价"),
+                ("maximum_order_value", "最大订单金额"),
+                ("minimum_order_value", "最小订单金额"),
+                ("median_order_value", "订单金额中位数"),
+                ("valid_sales_order_count", "有效销售订单数"),
+                ("amount_mismatch_count", "金额不一致记录数"),
+                ("amount_mismatch_rate", "金额不一致率"),
+                ("gross_order_amount", "订单总金额"),
+                ("completed_sales_amount", "已完成订单金额"),
+                ("cancelled_order_amount", "已取消订单金额"),
+                ("refund_related_amount", "退款相关订单金额"),
+            ):
+                if overview.get(key) is not None:
+                    rows.append((label, overview[key]))
+            return rows
         sales = metrics.get("sales_amount")
         highest = metrics.get("highest_sales_region")
         lowest = metrics.get("lowest_sales_region")
@@ -176,6 +200,51 @@ class ReportService:
     def _inventory_analysis(metrics: dict) -> dict:
         value = metrics.get("inventory_analysis")
         return value if isinstance(value, dict) else {}
+
+    @staticmethod
+    def _order_analysis(metrics: dict) -> dict:
+        value = metrics.get("order_analysis")
+        return value if isinstance(value, dict) else {}
+
+    @staticmethod
+    def _order_tables(metrics: dict) -> list[tuple[str, list[str], list[list[object]]]]:
+        analysis = ReportService._order_analysis(metrics)
+        if not analysis:
+            return []
+        tables: list[tuple[str, list[str], list[list[object]]]] = []
+        for key, title, headers, fields in (
+            ("product_analysis", "商品销售分析", ["商品", "订单数", "销量", "销售额"], ["name", "order_count", "quantity", "sales_amount"]),
+            ("category_analysis", "品类销售分析", ["品类", "订单数", "销量", "销售额", "销售占比"], ["category", "order_count", "quantity", "sales_amount", "sales_share"]),
+            ("region_analysis", "地区销售分析", ["地区", "订单数", "销量", "销售额", "平均客单价"], ["name", "region_order_count", "region_quantity", "region_sales", "region_average_order_value"]),
+            ("status_analysis", "订单状态分析", ["状态", "订单数", "订单金额", "订单占比"], ["name", "order_count", "sales_amount", "share"]),
+            ("payment_method_analysis", "支付方式分析", ["支付方式", "订单数", "订单金额", "订单占比", "销售额占比"], ["name", "order_count", "sales_amount", "order_share", "sales_share"]),
+        ):
+            values = analysis.get(key) or []
+            if values:
+                tables.append((title, headers, [[item.get(field) for field in fields] for item in values]))
+        customer = analysis.get("customer_analysis")
+        if isinstance(customer, dict) and customer.get("top_customers"):
+            tables.append((
+                "客户复购分析",
+                ["客户编号", "订单数", "销售额"],
+                [[item.get("customer_id"), item.get("order_count"), item.get("sales_amount")] for item in customer["top_customers"]],
+            ))
+        time_analysis = analysis.get("time_analysis") or {}
+        for key, title, header in (("daily_sales_trend", "日销售趋势", "日期"), ("monthly_sales_trend", "月度销售趋势", "月份"), ("monthly_order_trend", "月度订单趋势", "月份")):
+            values = time_analysis.get(key) or []
+            if values:
+                tables.append((title, [header, "数值"], [[item.get("name"), item.get("value")] for item in values]))
+        discount = analysis.get("discount_analysis")
+        if isinstance(discount, dict):
+            tables.append(("折扣分析", list(discount.keys()), [list(discount.values())]))
+        quality = analysis.get("data_quality")
+        if isinstance(quality, dict):
+            rows = [[key, value] for key, value in quality.items() if key != "missing_value_summary"]
+            if quality.get("missing_value_summary"):
+                rows.append(["missing_value_summary", "；".join(f"{key}:{value}" for key, value in quality["missing_value_summary"].items())])
+            if rows:
+                tables.append(("数据质量检查", ["检查项", "结果"], rows))
+        return tables
 
     @staticmethod
     def _student_score_tables(metrics: dict) -> list[tuple[str, list[str], list[list[object]]]]:
@@ -380,6 +449,10 @@ class ReportService:
                     ("；".join(str(value) for value in row), 8.5)
                     for row in rows
                 )
+        for title, headers, rows in ReportService._order_tables(metrics):
+            sections.append((title, 10))
+            sections.append(("；".join(headers), 8.5))
+            sections.extend(("；".join(str(value) for value in row), 8.5) for row in rows)
         figure, axis = plt.subplots(figsize=(8.2, max(5.5, 1.2 + len(sections) * 0.42)))
         axis.axis("off")
         y_position = 0.96
@@ -421,6 +494,7 @@ class ReportService:
             for item in skipped_analyses:
                 doc.add_paragraph(item, style="List Bullet")
         for title, headers, rows in [
+            *self._order_tables(metrics),
             *self._student_score_tables(metrics),
             *self._inventory_tables(metrics),
         ]:

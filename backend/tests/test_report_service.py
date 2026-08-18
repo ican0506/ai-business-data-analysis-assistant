@@ -280,3 +280,28 @@ def test_inventory_exports_render_tables_without_order_chart() -> None:
     assert workbook.active._charts == []
     assert service.build_word(None, dataset).startswith(b"PK")
     assert service.build_pdf(None, dataset).startswith(b"%PDF")
+
+
+def test_order_exports_use_dynamic_business_sections_and_trusted_amount_notice() -> None:
+    metrics = {
+        "total_rows": 2,
+        "selected_module": {"id": "order", "name": "订单分析"},
+        "top_regions": [{"name": "郑州", "value": 100.0}],
+        "analysis_plan": [],
+        "order_analysis": {
+            "overview": {"record_count": 2, "order_count": 2, "sales_total": 100.0, "average_order_value": 50.0, "amount_mismatch_count": 1},
+            "product_analysis": [{"name": "商品A", "order_count": 2, "quantity": 2.0, "sales_amount": 100.0}],
+            "category_analysis": [], "region_analysis": [], "status_analysis": [], "payment_method_analysis": [],
+            "customer_analysis": None, "time_analysis": {}, "discount_analysis": None,
+            "data_quality": {"amount_mismatch_count": 1},
+        },
+    }
+    analysis = {"mode": "rule_based", "metrics": metrics, "summary": "可信销售额 100。", "anomalies": ["金额不一致。"], "business_problems": ["需复核。"], "recommendations": ["按可信金额统计。"]}
+    service = ReportService(); service.analysis_service = SimpleNamespace(generate_report=lambda *_args: analysis)
+    workbook = load_workbook(BytesIO(service.build_excel(None, SimpleNamespace(original_filename="orders.xlsx"))))
+    values = [cell.value for row in workbook.active.iter_rows() for cell in row if cell.value is not None]
+
+    assert "可信销售额总计" in values
+    assert "商品销售分析" in values
+    assert "品类销售分析" not in values
+    assert workbook.active._charts

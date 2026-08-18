@@ -10,6 +10,7 @@ from app.models.dataset_cleaning import DatasetCleaningRun
 from app.services.analysis_engine import AnalysisEngine
 from app.services.field_mapping_override_service import FieldMappingOverrideService
 from app.services.inventory_analyzer import InventoryAnalyzer
+from app.services.order_analyzer import OrderAnalyzer
 from app.services.student_score_analyzer import StudentScoreAnalyzer
 
 
@@ -63,32 +64,39 @@ class MetricsService:
             )
 
         plan_by_id = {item["id"]: item for item in analysis_plan}
-        analysis_frame = analysis_frame.copy()
-
-        if self._is_supported(plan_by_id, "sales_total"):
-            matched_fields = plan_by_id["sales_total"].get("matched_fields", [])
-            if matched_fields == ["unit_price", "quantity"]:
-                analysis_frame["sales_amount"] = (
-                    pd.to_numeric(analysis_frame["unit_price"], errors="coerce")
-                    * pd.to_numeric(analysis_frame["quantity"], errors="coerce")
-                )
-
-        sales = (
-            self._numeric(analysis_frame, "sales_amount")
-            if self._is_supported(plan_by_id, "sales_total")
+        order_analysis = OrderAnalyzer().analyze(analysis_frame, analysis_plan)
+        overview = order_analysis["overview"]
+        sales_available = self._is_supported(plan_by_id, "sales_total")
+        sales_summary = (
+            {
+                "total": overview["sales_total"],
+                "average": overview["average_order_value"],
+                "maximum": overview["maximum_order_value"],
+                "minimum": overview["minimum_order_value"],
+            }
+            if sales_available and overview["sales_total"] is not None
             else None
         )
-        targets = self._numeric(analysis_frame, "target_amount")
-        region_ranking = (
-            self._region_ranking(analysis_frame)
-            if self._is_supported(plan_by_id, "region_sales")
-            else []
-        )
-        completion_rate = self._completion_rate(
-            sales,
-            targets,
+        region_analysis = order_analysis["region_analysis"]
+        region_ranking = [
+            {"name": item["name"], "value": item["region_sales"]}
+            for item in region_analysis
+            if item["region_sales"] is not None
+        ]
+        daily_trend = order_analysis["time_analysis"]["daily_sales_trend"]
+        growth_rate = self._growth_from_trend(daily_trend) if self._is_supported(plan_by_id, "sales_trend") else None
+        completion_rate = self._completion_from_trusted_amount(
+            analysis_frame,
+            order_analysis,
             self._is_supported(plan_by_id, "target_completion"),
         )
+        region_performance = self._region_performance_from_analysis(region_analysis)
+        product_quantity = [
+            {"name": item["name"], "value": item["quantity"]}
+            for item in order_analysis["product_analysis"]
+            if item["quantity"] is not None
+        ]
+        product_quantity.sort(key=lambda item: (-float(item["value"]), str(item["name"])))
         result = {
             "dataset_id": dataset_id,
             "total_rows": len(analysis_frame.index),
@@ -99,29 +107,18 @@ class MetricsService:
             "generic_analysis": None,
             "student_score_analysis": None,
             "inventory_analysis": None,
-            "sales_amount": self._summary(sales) if sales is not None else None,
-            "growth_rate": (
-                self._growth_rate(analysis_frame, sales)
-                if sales is not None and self._is_supported(plan_by_id, "sales_trend")
-                else None
-            ),
+            "order_analysis": order_analysis,
+            "sales_amount": sales_summary,
+            "growth_rate": growth_rate,
             "completion_rate": completion_rate,
             "top_regions": region_ranking[:10],
             "region_ranking": region_ranking,
             "highest_sales_region": region_ranking[0] if region_ranking else None,
             "lowest_sales_region": region_ranking[-1] if region_ranking else None,
-            "region_performance": (
-                self._region_performance(analysis_frame)
-                if self._is_supported(plan_by_id, "region_sales")
-                else []
-            ),
-            "sales_volatility": self._sales_volatility(sales) if sales is not None else None,
-            "order_count": self._order_count(analysis_frame) if self._is_supported(plan_by_id, "order_count") else None,
-            "product_quantity": (
-                self._product_quantity(analysis_frame)
-                if self._is_supported(plan_by_id, "product_quantity")
-                else []
-            ),
+            "region_performance": region_performance if self._is_supported(plan_by_id, "region_sales") else [],
+            "sales_volatility": overview.get("sales_volatility") if sales_summary is not None else None,
+            "order_count": overview["order_count"] if self._is_supported(plan_by_id, "order_count") else None,
+            "product_quantity": product_quantity if self._is_supported(plan_by_id, "product_quantity") else [],
         }
         return result
 
@@ -157,6 +154,7 @@ class MetricsService:
                 if is_inventory
                 else None
             ),
+            "order_analysis": None,
             "sales_amount": None,
             "growth_rate": None,
             "completion_rate": None,
@@ -169,6 +167,42 @@ class MetricsService:
             "order_count": None,
             "product_quantity": [],
         }
+
+    @staticmethod
+    def _growth_from_trend(trend: list[dict[str, object]]) -> float | None:
+        if len(trend) < 2 or float(trend[0]["value"]) == 0:
+            return None
+        return round(
+            (float(trend[-1]["value"]) - float(trend[0]["value"]))
+            / float(trend[0]["value"]) * 100,
+            2,
+        )
+
+    @staticmethod
+    def _completion_from_trusted_amount(
+        frame: pd.DataFrame,
+        order_analysis: dict[str, object],
+        supported: bool,
+    ) -> float | None:
+        if not supported or "target_amount" not in frame:
+            return None
+        total = order_analysis["overview"]["sales_total"]
+        targets = pd.to_numeric(frame["target_amount"], errors="coerce").dropna()
+        return round(float(total) / float(targets.sum()) * 100, 2) if total is not None and float(targets.sum()) else None
+
+    @staticmethod
+    def _region_performance_from_analysis(regions: list[dict[str, object]]) -> list[dict[str, object]]:
+        return [
+            {
+                "name": item["name"],
+                "sales_amount": item["region_sales"],
+                "target_amount": item.get("target_amount"),
+                "completion_rate": item.get("completion_rate"),
+            }
+            for item in regions
+            if item["region_sales"] is not None
+        ]
+
 
     @staticmethod
     def _is_supported(plan_by_id: dict[str, dict[str, object]], capability_id: str) -> bool:

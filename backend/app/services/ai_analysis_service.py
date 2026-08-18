@@ -41,7 +41,31 @@ class AIAnalysisService:
         elif module_id == "generic":
             calculated_metrics = {"generic_analysis": metrics.get("generic_analysis")}
         else:
-            calculated_metrics = {
+            order_analysis = metrics.get("order_analysis")
+            if isinstance(order_analysis, dict):
+                overview = order_analysis.get("overview") or {}
+                time_analysis = order_analysis.get("time_analysis") or {}
+                calculated_metrics = {
+                    "order_count": overview.get("order_count"),
+                    "product_quantity": metrics.get("product_quantity"),
+                    "sales_total": (
+                        {"total": overview.get("sales_total"), "average": overview.get("average_order_value")}
+                        if overview.get("sales_total") is not None else None
+                    ),
+                    "product_sales": order_analysis.get("product_analysis"),
+                    "category_analysis": order_analysis.get("category_analysis"),
+                    "region_sales": order_analysis.get("region_analysis"),
+                    "sales_trend": time_analysis.get("daily_sales_trend"),
+                    "target_completion": metrics.get("completion_rate"),
+                    "customer_analysis": order_analysis.get("customer_analysis"),
+                    "status_analysis": order_analysis.get("status_analysis"),
+                    "payment_method_analysis": order_analysis.get("payment_method_analysis"),
+                    "discount_analysis": order_analysis.get("discount_analysis"),
+                    "demographic_analysis": order_analysis.get("demographic_analysis"),
+                    "data_quality_analysis": order_analysis.get("data_quality"),
+                }
+            else:
+                calculated_metrics = {
                 "order_count": metrics.get("order_count"),
                 "product_quantity": metrics.get("product_quantity"),
                 "sales_total": metrics.get("sales_amount"),
@@ -84,6 +108,8 @@ class AIAnalysisService:
             return self._build_inventory_rule_report(metrics, analysis_context)
         if module_id == "generic":
             return self._build_generic_rule_report(metrics, analysis_context)
+        if isinstance(metrics.get("order_analysis"), dict):
+            return self._build_order_rule_report(metrics, analysis_context)
         supported = analysis_context["supported_analyses"]
         sales_amount = supported.get("sales_total")
         completion_rate = supported.get("target_completion")
@@ -174,6 +200,85 @@ class AIAnalysisService:
                     f"优化建议：{'；'.join(recommendations)}",
                 ]
             ),
+            "analysis_context": analysis_context,
+        }
+
+    @staticmethod
+    def _build_order_rule_report(metrics: dict, analysis_context: dict) -> dict:
+        """Explain only non-sensitive facts computed by ``OrderAnalyzer``."""
+        supported = analysis_context["supported_analyses"]
+        analysis = metrics["order_analysis"]
+        overview = analysis.get("overview") or {}
+        summary_parts = [f"本次订单分析覆盖 {overview.get('record_count', metrics.get('total_rows', 0))} 条记录"]
+        anomalies: list[str] = []
+        problems: list[str] = []
+        recommendations: list[str] = []
+        if "order_count" in supported:
+            summary_parts.append(f"去重后订单数 {overview.get('order_count')}")
+        if overview.get("sales_total") is not None:
+            summary_parts.append(
+                f"可信销售额 {overview['sales_total']}，平均客单价 {overview.get('average_order_value')}"
+            )
+        completion_rate = supported.get("target_completion")
+        if completion_rate is not None and float(completion_rate) < 80:
+            anomalies.append(f"整体目标完成率为 {completion_rate}%，低于 80% 预警线。")
+            problems.append("可信销售额与既定目标存在差距。")
+            recommendations.append("结合真实目标完成率复盘客户覆盖、转化与资源投入。")
+        products = supported.get("product_sales") or []
+        if products:
+            summary_parts.append(f"销售额较高的商品为 {products[0]['name']}（{products[0]['sales_amount']}）")
+        categories = supported.get("category_analysis") or []
+        if categories:
+            summary_parts.append(f"销售额较高的品类为 {categories[0]['category']}（{categories[0]['sales_amount']}）")
+        regions = supported.get("region_sales") or []
+        if len(regions) >= 2 and regions[0].get("region_sales") is not None and regions[-1].get("region_sales") is not None:
+            anomalies.append(
+                f"区域销售存在差异：{regions[0]['name']} 为 {regions[0]['region_sales']}，{regions[-1]['name']} 为 {regions[-1]['region_sales']}。"
+            )
+            problems.append("区域经营表现存在差异，应基于已计算的销售额持续复盘。")
+            recommendations.append("对比各区域的真实订单与销售数据，沉淀可复用的经营做法。")
+        customers = supported.get("customer_analysis")
+        if isinstance(customers, dict):
+            summary_parts.append(f"客户数 {customers.get('unique_customer_count')}，复购客户数 {customers.get('repeat_customer_count')}")
+        status_summary = analysis.get("status_summary")
+        if isinstance(status_summary, dict) and status_summary.get("refund_order_count"):
+            anomalies.append(f"有效状态订单中退款相关订单 {status_summary['refund_order_count']} 笔。")
+            recommendations.append("复核退款订单的商品、履约和售后记录，持续跟踪真实退款变化。")
+        quality = supported.get("data_quality_analysis")
+        if isinstance(quality, dict):
+            quality_messages = []
+            for key, label in (("duplicate_row_count", "完整重复行"), ("duplicate_order_id_count", "重复订单号"), ("invalid_date_count", "无效日期"), ("amount_mismatch_count", "金额不一致记录")):
+                value = quality.get(key, 0)
+                if value:
+                    quality_messages.append(f"{label} {value} 条")
+            if quality_messages:
+                anomalies.append("数据质量提示：" + "，".join(quality_messages) + "。")
+                problems.append("部分订单字段存在可验证的数据质量问题，业务结论应结合清洗结果复核。")
+                recommendations.append("优先修复重复、日期或金额不一致记录；销售汇总已按可信金额口径计算。")
+        trend = supported.get("sales_trend") or []
+        if len(trend) >= 2:
+            first, last = trend[0], trend[-1]
+            change = float(last["value"]) - float(first["value"])
+            if change < 0:
+                anomalies.append(f"销售额环比下降 {abs(change)}，从 {first['name']} 的 {first['value']} 变为 {last['name']} 的 {last['value']}。")
+            else:
+                anomalies.append(
+                    f"从 {first['name']} 到 {last['name']}，日销售额{'上升' if change > 0 else '保持不变'} {abs(change)}。"
+                )
+        if not anomalies:
+            anomalies.append("当前已计算订单指标未触发额外风险规则，建议结合后续订单数据持续复盘。")
+        if not problems:
+            problems.append("仅基于当前已计算的订单指标进行描述，未对缺失字段作业务评价。")
+        if not recommendations:
+            recommendations.append("持续补充真实订单、状态、时间或地域字段，以支持后续对比分析。")
+        overview_text = "；".join(summary_parts) + "。"
+        return {
+            "mode": "rule_based",
+            "summary": overview_text,
+            "anomalies": anomalies,
+            "business_problems": problems,
+            "recommendations": recommendations,
+            "report": "\n".join([f"数据概览：{overview_text}", f"异常分析：{'；'.join(anomalies)}", f"业务问题：{'；'.join(problems)}", f"优化建议：{'；'.join(recommendations)}"]),
             "analysis_context": analysis_context,
         }
 
@@ -392,7 +497,16 @@ class AIAnalysisService:
                 "analysis_plan": analysis_context.get("analysis_plan", []),
                 "inventory_analysis": metrics.get("inventory_analysis"),
             }
-        return metrics
+        order_analysis = metrics.get("order_analysis") or {}
+        sanitized_order_analysis = json.loads(json.dumps(order_analysis, ensure_ascii=False))
+        for customer in (sanitized_order_analysis.get("customer_analysis") or {}).get("top_customers", []):
+            customer.pop("customer_name", None)
+        return {
+            "selected_module": selected_module,
+            "available_fields": analysis_context.get("available_fields", []),
+            "analysis_plan": analysis_context.get("analysis_plan", []),
+            "order_analysis": sanitized_order_analysis,
+        }
 
     @staticmethod
     def _generate_with_deepseek(metrics: dict, analysis_context: dict, fallback: dict) -> dict:
@@ -413,13 +527,20 @@ class AIAnalysisService:
             if selected_module == "inventory"
             else ""
         )
+        order_constraints = (
+            "当前是订单数据：只能使用 order_analysis 中已计算的聚合事实；不得接触或复述电话、邮箱、备注、客户姓名等个人信息；"
+            "不得把总订单金额等同于已完成收入，不得推断利润、毛利、库存、营销因果或个人属性。"
+            "若存在数据质量提示，须先说明其对结论可靠性的限制。\n"
+            if selected_module == "order"
+            else ""
+        )
         prompt = (
             "你是一名企业运营数据分析师。只可基于 Python 已计算的真实分析结果生成中文报告。"
             "只能分析 supported_analyses 和提供的 metrics；不得推断 skipped_analyses。"
             "缺失字段不代表数值为 0；不得编造销售额、完成率、区域、客户或退款数据。"
             "所有数字必须来自输入 metrics；真实为 0 的指标可以正常说明。"
             "可以说明某项因缺少字段未分析，但不得评价该项业务表现，也不得根据字段名称自行补充指标。"
-            f"{student_constraints}{inventory_constraints}"
+            f"{student_constraints}{inventory_constraints}{order_constraints}"
             "返回 JSON：summary, anomalies, business_problems, recommendations, report。\n"
             f"分析上下文：{analysis_context}\n"
             f"真实指标：{AIAnalysisService._deepseek_metrics_payload(metrics, analysis_context)}"

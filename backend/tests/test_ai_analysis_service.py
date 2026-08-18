@@ -471,3 +471,30 @@ def test_inventory_deepseek_payload_and_prompt_exclude_order_metrics(monkeypatch
     assert "inventory_analysis" in captured["prompt"]
     assert "sales_amount" not in captured["prompt"]
     assert "不得推断库存周转率" in captured["prompt"]
+
+
+def test_order_analysis_context_and_deepseek_payload_keep_only_safe_aggregates() -> None:
+    metrics = {
+        "total_rows": 2,
+        "selected_module": {"id": "order", "name": "订单分析"},
+        "analysis_plan": [
+            {"id": "order_count", "name": "订单数量分析", "supported": True},
+            {"id": "sales_total", "name": "销售额分析", "supported": True},
+            {"id": "customer_analysis", "name": "客户分析", "supported": True},
+            {"id": "data_quality_analysis", "name": "数据质量分析", "supported": True},
+        ],
+        "order_analysis": {
+            "overview": {"record_count": 2, "order_count": 2, "sales_total": 100.0, "average_order_value": 50.0},
+            "customer_analysis": {"top_customers": [{"customer_id": "U-1", "customer_name": "张三", "order_count": 2, "sales_amount": 100.0}]},
+            "data_quality": {"amount_mismatch_count": 1},
+        },
+    }
+
+    context = AIAnalysisService.build_analysis_context(metrics)
+    payload = AIAnalysisService._deepseek_metrics_payload(metrics, context)
+    insight = AIAnalysisService().analyze_metrics(metrics)
+
+    assert context["supported_analyses"]["sales_total"]["total"] == 100.0
+    assert "customer_name" not in str(payload)
+    assert "可信销售额 100.0" in insight["summary"]
+    assert "金额不一致" in insight["report"]

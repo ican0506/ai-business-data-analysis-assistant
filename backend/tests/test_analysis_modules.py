@@ -25,7 +25,14 @@ def test_order_module_reuses_all_existing_order_capabilities() -> None:
         "customer_analysis",
         "refund_analysis",
         "target_completion",
-    } == {capability.id for capability in module.capabilities()}
+        "product_sales",
+        "category_analysis",
+        "status_analysis",
+        "payment_method_analysis",
+        "discount_analysis",
+        "demographic_analysis",
+        "data_quality_analysis",
+    } <= {capability.id for capability in module.capabilities()}
     assert COMPATIBLE_ORDER_ANALYSIS_CAPABILITIES is ORDER_ANALYSIS_CAPABILITIES
 
 

@@ -6,7 +6,7 @@ export const DOMAIN_DISPLAY = {
 }
 
 export const CANONICAL_FIELD_GROUPS = [
-  { label: '订单', fields: ['order_id', 'product', 'quantity', 'unit_price', 'sales_amount', 'customer_id', 'region', 'status', 'date', 'target_amount'] },
+  { label: '订单', fields: ['order_id', 'product', 'quantity', 'unit_price', 'sales_amount', 'customer_id', 'customer_name', 'category', 'region', 'status', 'date', 'discount', 'payment_method', 'gender', 'age', 'target_amount'] },
   { label: '学生成绩', fields: ['student_id', 'student_name', 'subject', 'score', 'class_name', 'grade', 'exam_name', 'exam_date'] },
   { label: '库存', fields: ['product_id', 'product_name', 'category', 'stock_quantity', 'safety_stock', 'unit_cost', 'warehouse', 'supplier', 'inbound_quantity', 'outbound_quantity', 'inventory_date'] },
 ]

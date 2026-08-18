@@ -64,6 +64,21 @@ def test_maps_chinese_order_and_normalizes_english_header_variants() -> None:
     assert metadata["conflicts"] == []
 
 
+def test_maps_real_ecommerce_order_aliases_without_mapping_personal_contacts() -> None:
+    frame = pd.DataFrame({
+        "user_id": ["U-1"], "user_name": ["张三"], "city": ["郑州市"],
+        "order_amount": [90], "order_status": ["已完成"], "order_time": ["2026-08-01"],
+        "商品分类": ["数码"], "discount": [0.9], "payment_method": ["微信"],
+        "phone": ["13800000000"], "email": ["demo@example.com"], "remark": ["仅质量检查"],
+    })
+
+    mapped, metadata = CanonicalFieldMapper().map_dataframe(frame)
+
+    assert {"customer_id", "customer_name", "region", "sales_amount", "status", "date", "category", "discount", "payment_method"} <= set(mapped.columns)
+    assert {"phone", "email", "remark"} <= set(mapped.columns)
+    assert {"phone", "email", "remark"} <= set(metadata["unmapped_columns"])
+
+
 def test_preserves_canonical_column_and_records_canonical_alias_conflict() -> None:
     frame = pd.DataFrame({"score": [90], "成绩": [99]})
 

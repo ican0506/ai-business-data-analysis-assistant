@@ -36,7 +36,17 @@ def test_full_order_fields_support_all_capabilities() -> None:
     available_fields = AnalysisPlanner.available_fields_from_dataframe(dataframe)
     results = plan_by_id(available_fields)
 
-    assert all(result["supported"] is True for result in results.values())
+    assert all(
+        results[capability_id]["supported"] is True
+        for capability_id in {
+            "order_count", "product_quantity", "product_sales", "sales_total",
+            "region_sales", "sales_trend", "target_completion", "customer_analysis",
+            "status_analysis", "refund_analysis", "data_quality_analysis",
+        }
+    )
+    assert results["category_analysis"]["supported"] is False
+    assert results["payment_method_analysis"]["supported"] is False
+    assert results["discount_analysis"]["supported"] is False
     assert results["sales_total"]["matched_fields"] == ["sales_amount"]
 
 
@@ -126,7 +136,12 @@ def test_empty_dataframe_has_no_available_fields_and_does_not_raise() -> None:
     results = plan_by_id(available_fields)
 
     assert available_fields == set()
-    assert all(result["supported"] is False for result in results.values())
+    assert all(
+        result["supported"] is False
+        for capability_id, result in results.items()
+        if capability_id != "data_quality_analysis"
+    )
+    assert results["data_quality_analysis"]["supported"] is True
 
 
 def test_target_completion_requires_target_and_a_sales_solution() -> None:

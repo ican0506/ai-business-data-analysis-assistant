@@ -3,6 +3,7 @@ from __future__ import annotations
 import pandas as pd
 
 from app.analysis_modules.order import ORDER_ANALYSIS_CAPABILITIES
+from app.analysis_modules.order import OrderModule
 from app.services.analysis_planner import AnalysisPlanner
 from app.services.order_analyzer import OrderAnalyzer
 
@@ -118,3 +119,76 @@ def test_order_analyzer_uses_unique_order_ids_for_repeat_customers() -> None:
             {"customer_id": "U-2", "order_count": 1, "sales_amount": 10.0},
         ],
     }
+
+
+def test_order_analyzer_normalizes_chinese_dates_and_counts_only_nonempty_invalid_dates() -> None:
+    frame = pd.DataFrame({
+        "order_id": [f"O-{index}" for index in range(10)],
+        "unit_price": [10] * 10,
+        "quantity": [1] * 10,
+        "date": [
+            "2026-01-08", "2026/01/08", "2026.01.08", "2026-01-08 09:45",
+            "2026/01/08 09:45", "2026年01月08日", "2026年01月08日 09:45",
+            "2026年1月8日 9:45", "not-a-date", None,
+        ],
+    })
+
+    analysis = OrderAnalyzer().analyze(frame, _plan(frame))
+
+    assert analysis["data_quality"]["invalid_date_count"] == 1
+    assert OrderAnalyzer._parse_order_dates(frame["date"]).notna().sum() == 8
+
+
+def test_order_analyzer_standardizes_known_regions_and_keeps_unknown_regions() -> None:
+    frame = pd.DataFrame({
+        "order_id": ["O-1", "O-2", "O-3", "O-4", "O-5"],
+        "region": [" 郑州市 ", "zhengzhou", "南阳市", " NANYANG ", "自定义地区"],
+        "unit_price": [10, 20, 30, 40, 50],
+        "quantity": [1, 1, 1, 1, 1],
+    })
+
+    analysis = OrderAnalyzer().analyze(frame, _plan(frame))
+
+    assert [(item["name"], item["region_sales"]) for item in analysis["region_analysis"]] == [
+        ("南阳", 70.0), ("自定义地区", 50.0), ("郑州", 30.0),
+    ]
+
+
+def test_order_analyzer_standardizes_xuchang_and_does_not_guess_unknown_region() -> None:
+    frame = pd.DataFrame({
+        "order_id": ["O-1", "O-2", "O-3", "O-4"],
+        "region": ["许昌", "许昌市", "xuchang", "未知城市ABC"],
+        "unit_price": [10, 10, 10, 20],
+        "quantity": [1, 1, 1, 1],
+    })
+
+    regions = OrderAnalyzer().analyze(frame, _plan(frame))["region_analysis"]
+
+    assert [(item["name"], item["region_sales"]) for item in regions] == [("许昌", 30.0), ("未知城市ABC", 20.0)]
+
+
+def test_order_analyzer_calculates_aggregate_contact_quality_without_exposing_values() -> None:
+    frame = pd.DataFrame({
+        "order_id": ["O-1", "O-2", "O-3", "O-4"],
+        "phone": ["+86 138-0000-0000", "123", None, "abc"],
+        "email": ["valid@example.com", "bad-email", None, "also.valid@example.cn"],
+    })
+
+    analysis = OrderAnalyzer().analyze(frame, _plan(frame))
+    quality = analysis["data_quality"]
+
+    assert quality["phone_present_count"] == 3
+    assert quality["phone_missing_count"] == 1
+    assert quality["phone_valid_count"] == 1
+    assert quality["phone_invalid_count"] == 2
+    assert quality["email_present_count"] == 3
+    assert quality["email_missing_count"] == 1
+    assert quality["email_valid_count"] == 2
+    assert quality["email_invalid_count"] == 1
+    assert quality["contact_complete_count"] == 1
+    assert quality["contact_complete_rate"] == 25.0
+    assert "13800000000" not in str(analysis)
+
+
+def test_phone_and_email_only_do_not_identify_an_order_dataset() -> None:
+    assert OrderModule().match_score({"customer_name", "phone", "email"}) == 0.0

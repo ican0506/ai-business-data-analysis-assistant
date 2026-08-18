@@ -34,6 +34,7 @@ const qualityWarnings = computed(() => {
   const labels = {
     duplicate_row_count: '重复记录', duplicate_order_id_count: '重复订单号', invalid_date_count: '无效日期',
     invalid_unit_price_count: '异常单价', invalid_quantity_count: '异常数量', invalid_discount_count: '异常折扣', amount_mismatch_count: '金额不一致',
+    phone_invalid_count: '无效联系方式', email_invalid_count: '无效邮箱', phone_missing_count: '联系方式缺失', email_missing_count: '邮箱缺失',
   }
   return Object.entries(labels).flatMap(([key, label]) => Number(quality.value[key]) > 0 ? [`${label} ${quality.value[key]} 条`] : [])
 })

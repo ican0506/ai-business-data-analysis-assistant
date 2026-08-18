@@ -14,6 +14,8 @@ ORDER_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     "sales_amount": ("销售额", "销售金额", "订单金额", "成交金额", "订单实付金额", "order amount", "order_amount", "sales amount", "sales_amount", "sales"),
     "customer_id": ("客户编号", "客户ID", "用户编号", "用户ID", "user id", "user_id", "customer id", "customer_id"),
     "customer_name": ("客户姓名", "客户名称", "用户姓名", "用户名", "user name", "user_name", "customer name", "customer_name"),
+    "phone": ("phone", "mobile", "mobile_phone", "mobile phone", "tel", "telephone", "手机号", "手机号码", "手机", "联系电话", "联系电话号码", "电话"),
+    "email": ("email", "e-mail", "mail", "email_address", "email address", "邮箱", "电子邮箱", "电子邮件"),
     "category": ("商品类别", "商品品类", "订单品类", "分类", "商品分类", "产品分类", "品类", "category"),
     "region": ("区域", "地区", "大区", "城市", "city", "region"),
     "status": ("状态", "订单状态", "order status", "order_status", "status"),

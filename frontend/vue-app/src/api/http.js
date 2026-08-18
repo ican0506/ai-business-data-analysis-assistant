@@ -24,7 +24,7 @@ http.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem(TOKEN_STORAGE_KEY)
       localStorage.removeItem('ai_insight_user')
-      if (window.location.pathname !== '/login') window.location.assign('/login')
+      window.dispatchEvent(new CustomEvent('session-expired'))
     }
     let responseData = error.response?.data
     if (responseData instanceof Blob) {

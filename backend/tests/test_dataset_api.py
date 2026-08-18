@@ -51,6 +51,64 @@ def auth_headers(client: TestClient) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def auth_headers_for(client: TestClient, username: str) -> dict[str, str]:
+    client.post(
+        "/api/v1/auth/register",
+        json={"username": username, "email": f"{username}@example.com", "password": "Password123"},
+    )
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"username": username, "password": "Password123"},
+    )
+    return {"Authorization": f"Bearer {response.json()['data']['access_token']}"}
+
+
+def test_list_datasets_returns_only_the_current_users_records(client: TestClient) -> None:
+    owner_headers = auth_headers_for(client, "dataset_owner")
+    other_headers = auth_headers_for(client, "dataset_other")
+    for filename in ("orders.csv", "orders.csv"):
+        response = client.post(
+            "/api/v1/datasets/upload",
+            headers=owner_headers,
+            files={"file": (filename, BytesIO(b"order_id,unit_price,quantity\nO-1,10,2\n"), "text/csv")},
+        )
+        assert response.status_code == 201
+
+    owner_response = client.get("/api/v1/datasets", headers=owner_headers)
+    other_response = client.get("/api/v1/datasets", headers=other_headers)
+
+    assert owner_response.status_code == 200
+    assert owner_response.json()["message"] == "数据集列表读取成功"
+    assert [item["original_filename"] for item in owner_response.json()["data"]] == ["orders.csv", "orders.csv"]
+    assert all({"id", "original_filename", "status", "row_count", "column_count", "created_at"} <= item.keys() for item in owner_response.json()["data"])
+    assert other_response.json()["data"] == []
+
+
+def test_other_user_cannot_access_dataset_metrics_mapping_analysis_or_reports(client: TestClient) -> None:
+    owner_headers = auth_headers_for(client, "access_owner")
+    other_headers = auth_headers_for(client, "access_other")
+    upload = client.post(
+        "/api/v1/datasets/upload",
+        headers=owner_headers,
+        files={"file": ("orders.csv", BytesIO(b"order_id,unit_price,quantity\nO-1,10,2\n"), "text/csv")},
+    )
+    dataset_id = upload.json()["data"]["id"]
+    assert client.post(f"/api/v1/datasets/{dataset_id}/clean", headers=owner_headers).status_code == 201
+
+    for method, path in (
+        ("get", f"/api/v1/datasets/{dataset_id}/metrics"),
+        ("get", f"/api/v1/datasets/{dataset_id}/field-mapping"),
+        ("post", f"/api/v1/datasets/{dataset_id}/ai-analysis"),
+        ("get", f"/api/v1/datasets/{dataset_id}/reports/excel"),
+        ("get", f"/api/v1/datasets/{dataset_id}/reports/word"),
+        ("get", f"/api/v1/datasets/{dataset_id}/reports/pdf"),
+    ):
+        response = getattr(client, method)(path, headers=other_headers)
+        assert response.status_code == 403
+        if "/reports/" in path:
+            assert response.json()["detail"] == "无权下载此数据集报告。"
+
+
 def test_upload_csv_returns_dataset_schema_and_preview(client: TestClient) -> None:
     csv_content = "date,region,sales_amount\n2026-07-01,华东,1200\n2026-07-02,华南,800\n"
 

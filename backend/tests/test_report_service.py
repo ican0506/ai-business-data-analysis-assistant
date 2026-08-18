@@ -315,3 +315,33 @@ def test_order_exports_use_dynamic_business_sections_and_trusted_amount_notice()
     assert "商品销售分析" in values
     assert "品类销售分析" not in values
     assert workbook.active._charts
+
+
+def test_reports_generate_from_each_current_analysis_without_reusing_old_metrics() -> None:
+    def analysis_with_total(total: float) -> dict:
+        return {
+            "mode": "rule_based",
+            "metrics": {
+                "total_rows": 1,
+                "selected_module": {"id": "order", "name": "订单分析"},
+                "order_analysis": {"overview": {"order_count": 1, "verified_sales_total": total, "sales_total": total}},
+                "top_regions": [], "analysis_plan": [],
+            },
+            "summary": f"已验证销售额 {total}",
+            "anomalies": [], "business_problems": [], "recommendations": [],
+        }
+
+    analyses = iter([analysis_with_total(100.0), analysis_with_total(200.0), analysis_with_total(200.0), analysis_with_total(200.0)])
+    service = ReportService()
+    service.analysis_service = SimpleNamespace(generate_report=lambda *_args: next(analyses))
+    dataset = SimpleNamespace(original_filename="orders.xlsx")
+
+    first = load_workbook(BytesIO(service.build_excel(None, dataset)))
+    second = load_workbook(BytesIO(service.build_excel(None, dataset)))
+
+    first_values = [cell.value for row in first.active.iter_rows() for cell in row]
+    second_values = [cell.value for row in second.active.iter_rows() for cell in row]
+    assert 100.0 in first_values
+    assert 200.0 in second_values
+    assert service.build_word(None, dataset).startswith(b"PK")
+    assert service.build_pdf(None, dataset).startswith(b"%PDF")

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 
@@ -12,35 +12,32 @@ import StudentScoreDashboard from '../components/domain/StudentScoreDashboard.vu
 import ErrorState from '../components/common/ErrorState.vue'
 import Loading from '../components/common/Loading.vue'
 import { useAnalysisStore } from '../stores/analysis'
-import { getActiveDatasetId, loadDatasetHistory, setActiveDatasetId } from '../utils/datasetHistory'
+import { useAuthStore } from '../stores/auth'
+import { getDatasets } from '../api/datasets'
+import { datasetLabel, getActiveDatasetId, setActiveDatasetId, toDatasetRecord } from '../utils/datasetHistory'
 
 const analysisStore = useAnalysisStore()
+const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
-const records = ref(loadDatasetHistory())
-const routeDatasetId = Number(route.query.datasetId)
-const initialDatasetId = Number.isInteger(routeDatasetId) && routeDatasetId > 0
-  ? routeDatasetId
-  : getActiveDatasetId() || records.value[0]?.id || null
-const activeDatasetId = ref(initialDatasetId)
+const records = ref([])
+const activeDatasetId = ref(null)
 const selectedDatasetId = computed({
   get: () => activeDatasetId.value,
   set: (datasetId) => { void selectDataset(datasetId) },
 })
-const currentDataset = computed(() => records.value.find((item) => item.id === Number(activeDatasetId.value)) || (activeDatasetId.value ? { id: activeDatasetId.value, fileName: `数据集 #${activeDatasetId.value}`, status: '待加载' } : null))
+const currentDataset = computed(() => records.value.find((item) => item.id === Number(activeDatasetId.value)) || null)
 const dashboardComponent = computed(() => ({ order: OrderDashboard, student_score: StudentScoreDashboard, inventory: InventoryDashboard, generic: GenericDashboard }[analysisStore.domain.id] || GenericDashboard))
 const mappingVisible = computed({ get: () => Boolean(analysisStore.mappingDialogVisible), set: (value) => { analysisStore.mappingDialogVisible = value } })
-function syncDatasetRecords() { records.value = loadDatasetHistory() }
 function normalizeDatasetId(datasetId) {
   const normalizedDatasetId = Number(datasetId)
   return Number.isInteger(normalizedDatasetId) && normalizedDatasetId > 0 ? normalizedDatasetId : null
 }
 async function selectDataset(datasetId, { syncRoute = true } = {}) {
   const normalizedDatasetId = normalizeDatasetId(datasetId)
-  if (!normalizedDatasetId) return
-  syncDatasetRecords()
+  if (!normalizedDatasetId || !records.value.some((item) => item.id === normalizedDatasetId)) return
   activeDatasetId.value = normalizedDatasetId
-  setActiveDatasetId(normalizedDatasetId)
+  setActiveDatasetId(auth.user?.id, normalizedDatasetId)
   if (syncRoute && Number(route.query.datasetId) !== normalizedDatasetId) {
     await router.replace({ query: { ...route.query, datasetId: String(normalizedDatasetId) } })
   }
@@ -50,11 +47,24 @@ async function selectDataset(datasetId, { syncRoute = true } = {}) {
     // 错误已写入 store，由页面 ErrorState 展示并提供重试。
   }
 }
+async function loadDatasets() {
+  const datasets = await getDatasets()
+  records.value = datasets.map(toDatasetRecord)
+  const routeId = normalizeDatasetId(route.query.datasetId)
+  const storedId = getActiveDatasetId(auth.user?.id)
+  const nextId = [routeId, storedId, records.value[0]?.id].find((id) => records.value.some((item) => item.id === id)) || null
+  if (!nextId) {
+    activeDatasetId.value = null
+    analysisStore.$reset()
+    return
+  }
+  await selectDataset(nextId, { syncRoute: routeId !== nextId })
+}
 watch(() => route.query.datasetId, (value) => {
   const datasetId = normalizeDatasetId(value)
   if (datasetId && datasetId !== activeDatasetId.value) void selectDataset(datasetId, { syncRoute: false })
 })
-if (initialDatasetId) void selectDataset(initialDatasetId, { syncRoute: !routeDatasetId })
+onMounted(() => { void loadDatasets() })
 async function refresh() {
   if (analysisStore.loading || !activeDatasetId.value) return
   try {
@@ -70,7 +80,7 @@ async function resetMapping() { await saveMapping({}) }
 
 <template>
   <section class="dashboard-view">
-    <header class="dashboard-intro"><div><p class="view-eyebrow">DATASET ANALYSIS</p><h2>数据分析工作区</h2><p>以当前数据集的真实领域识别与后端指标为准，不将缺失指标展示为 0。</p></div><div class="dashboard-actions"><el-select v-model="selectedDatasetId" :disabled="analysisStore.loading || analysisStore.savingMapping" placeholder="选择数据集" class="dataset-select"><el-option v-for="record in records" :key="record.id" :label="record.fileName" :value="record.id" /></el-select><el-button :loading="analysisStore.loading" :disabled="analysisStore.loading || !activeDatasetId" @click="refresh">刷新</el-button><el-button type="primary" :disabled="analysisStore.loading || analysisStore.savingMapping || !activeDatasetId" @click="mappingVisible = true">字段映射</el-button></div></header>
+    <header class="dashboard-intro"><div><p class="view-eyebrow">DATASET ANALYSIS</p><h2>数据分析工作区</h2><p>以当前用户后端数据集与真实指标为准，不将缺失指标展示为 0。</p></div><div class="dashboard-actions"><el-select v-model="selectedDatasetId" :disabled="analysisStore.loading || analysisStore.savingMapping" placeholder="选择数据集" class="dataset-select"><el-option v-for="record in records" :key="record.id" :label="datasetLabel(record)" :value="record.id" /></el-select><el-button :loading="analysisStore.loading" :disabled="analysisStore.loading || !activeDatasetId" @click="refresh">刷新</el-button><el-button type="primary" :disabled="analysisStore.loading || analysisStore.savingMapping || !activeDatasetId" @click="mappingVisible = true">字段映射</el-button></div></header>
     <el-empty v-if="!currentDataset" description="暂无数据集，请先上传并清洗 CSV 或 Excel 文件。" :image-size="96" />
     <template v-else>
       <el-card class="dataset-context-card" shadow="never"><el-descriptions :column="3" border><el-descriptions-item label="当前数据集">{{ currentDataset.fileName }}</el-descriptions-item><el-descriptions-item label="清洗状态">{{ currentDataset.status }}</el-descriptions-item><el-descriptions-item label="识别结果"><DomainBadge :selected-module="analysisStore.selectedModule" /></el-descriptions-item></el-descriptions></el-card>

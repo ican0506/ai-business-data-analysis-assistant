@@ -13,6 +13,7 @@ vi.mock('vue-router', () => ({
 }))
 vi.mock('element-plus', () => ({ ElMessage: { success: vi.fn(), error: vi.fn() } }))
 vi.mock('../api/datasets', () => ({
+  getDatasets: vi.fn(),
   getDatasetMetrics: vi.fn(),
   getFieldMapping: vi.fn(),
   replaceFieldMapping: vi.fn(),
@@ -26,7 +27,7 @@ vi.mock('../components/domain/StudentScoreDashboard.vue', () => ({ default: { te
 vi.mock('../components/domain/InventoryDashboard.vue', () => ({ default: { template: '<div>库存指标</div>', props: ['metrics'] } }))
 vi.mock('../components/domain/GenericDashboard.vue', () => ({ default: { template: '<div>通用指标</div>', props: ['metrics'] } }))
 
-import { getDatasetMetrics, getFieldMapping } from '../api/datasets'
+import { getDatasets, getDatasetMetrics, getFieldMapping } from '../api/datasets'
 import { useAnalysisStore } from '../stores/analysis'
 import DashboardView from './DashboardView.vue'
 
@@ -69,10 +70,11 @@ describe('Dashboard 数据集状态同步', () => {
     replace.mockClear()
     vi.clearAllMocks()
     setActivePinia(createPinia())
-    localStorage.setItem('ai_insight_dataset_history', JSON.stringify([
-      { id: 1, fileName: 'pandas_dirty_orders_large.xlsx', status: 'CLEANED' },
-      { id: 2, fileName: '订单分析测试数据集.xlsx', status: 'CLEANED' },
-    ]))
+    localStorage.setItem('ai_insight_user', JSON.stringify({ id: 1, username: 'dataset_owner' }))
+    getDatasets.mockResolvedValue([
+      { id: 1, original_filename: 'pandas_dirty_orders_large.xlsx', status: 'CLEANED', row_count: 5000, column_count: 8, created_at: '2026-08-18T09:00:00' },
+      { id: 2, original_filename: '订单分析测试数据集.xlsx', status: 'CLEANED', row_count: 20, column_count: 8, created_at: '2026-08-18T10:00:00' },
+    ])
     getFieldMapping.mockResolvedValue({ overrides: {}, field_mapping: { mappings: [] } })
     getDatasetMetrics
       .mockResolvedValueOnce({ selected_module: { id: 'order' }, order_count: 10, top_regions: [{ name: '华东', value: 10 }] })
@@ -101,7 +103,7 @@ describe('Dashboard 数据集状态同步', () => {
     expect(host.textContent).toContain('订单分析测试数据集.xlsx')
     expect(store.datasetId).toBe(2)
     expect(route.query.datasetId).toBe('2')
-    expect(localStorage.getItem('ai_insight_active_dataset_id')).toBe('2')
+    expect(localStorage.getItem('ai_insight_active_dataset_id:1')).toBe('2')
     expect(getFieldMapping).toHaveBeenLastCalledWith(2)
     expect(getDatasetMetrics).toHaveBeenLastCalledWith(2)
     expect(store.metrics.order_count).toBe(20)
@@ -117,23 +119,17 @@ describe('Dashboard 数据集状态同步', () => {
     expect(store.metrics.order_count).toBe(30)
   })
 
-  it('路由切换到挂载后新增的数据集时会主动同步 localStorage 历史记录', async () => {
-    localStorage.setItem('ai_insight_dataset_history', JSON.stringify([
-      { id: 1, fileName: 'pandas_dirty_orders_large.xlsx', status: 'CLEANED' },
-    ]))
+  it('不会从过期 localStorage 历史读取数据集，而是回退到当前用户的后端首个数据集', async () => {
+    localStorage.setItem('ai_insight_dataset_history', JSON.stringify([{ id: 99, fileName: '不应显示.xlsx' }]))
+    route.query = { datasetId: '99' }
     const host = mountDashboard()
     await flush()
 
-    localStorage.setItem('ai_insight_dataset_history', JSON.stringify([
-      { id: 2, fileName: '订单分析测试数据集.xlsx', status: 'CLEANED' },
-      { id: 1, fileName: 'pandas_dirty_orders_large.xlsx', status: 'CLEANED' },
-    ]))
-    route.query = { datasetId: '2' }
-    await flush()
-
-    expect(host.querySelector('[data-testid="dataset-select"]').value).toBe('2')
-    expect(host.textContent).toContain('订单分析测试数据集.xlsx')
-    expect(useAnalysisStore().datasetId).toBe(2)
+    expect(host.querySelector('[data-testid="dataset-select"]').value).toBe('1')
+    expect(host.textContent).toContain('pandas_dirty_orders_large.xlsx')
+    expect(host.textContent).not.toContain('不应显示.xlsx')
+    expect(useAnalysisStore().datasetId).toBe(1)
+    expect(route.query.datasetId).toBe('1')
   })
 
   it('单次刷新只触发一轮请求，加载期间禁止重复刷新', async () => {

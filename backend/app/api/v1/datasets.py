@@ -2,6 +2,7 @@ from io import BytesIO
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.v1.auth import get_current_user
@@ -26,6 +27,33 @@ ai_analysis_service = AIAnalysisService()
 report_service = ReportService()
 operation_log_service = OperationLogService()
 field_mapping_override_service = FieldMappingOverrideService()
+
+
+@router.get("")
+def list_datasets(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    datasets = db.scalars(
+        select(Dataset)
+        .where(Dataset.owner_id == current_user.id)
+        .order_by(Dataset.id.desc())
+    ).all()
+    return {
+        "code": 0,
+        "message": "数据集列表读取成功",
+        "data": [
+            {
+                "id": dataset.id,
+                "original_filename": dataset.original_filename,
+                "status": dataset.status,
+                "row_count": dataset.row_count,
+                "column_count": dataset.column_count,
+                "created_at": dataset.created_at,
+            }
+            for dataset in datasets
+        ],
+    }
 
 
 @router.post("/upload", status_code=status.HTTP_201_CREATED)
@@ -141,7 +169,7 @@ def export_excel_report(dataset_id: int, current_user: User = Depends(get_curren
     if dataset is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="数据集不存在")
     if dataset.owner_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权导出此数据集")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权下载此数据集报告。")
     try:
         content = report_service.build_excel(db, dataset)
     except ValueError as error:
@@ -155,8 +183,10 @@ def export_report(report_type: str, dataset_id: int, current_user: User = Depend
     if report_type not in {"word", "pdf"}:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="报告类型不存在")
     dataset = db.get(Dataset, dataset_id)
-    if dataset is None or dataset.owner_id != current_user.id:
+    if dataset is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="数据集不存在")
+    if dataset.owner_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权下载此数据集报告。")
     try:
         content = report_service.build_word(db, dataset) if report_type == "word" else report_service.build_pdf(db, dataset)
     except ValueError as error:

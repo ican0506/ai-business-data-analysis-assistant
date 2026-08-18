@@ -129,6 +129,8 @@ class ReportService:
                 ("order_count", "订单数量"),
                 ("verified_sales_total", "已验证销售额总计"),
                 ("verified_order_count", "已验证订单数"),
+                ("amount_verification_rate", "金额验证覆盖率（%）"),
+                ("no_usable_amount_order_count", "无可用金额订单数"),
                 ("average_verified_order_value", "已验证平均客单价"),
                 ("maximum_verified_order_value", "最大已验证订单金额"),
                 ("minimum_verified_order_value", "最小已验证订单金额"),

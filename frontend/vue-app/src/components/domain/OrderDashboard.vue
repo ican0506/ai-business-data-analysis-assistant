@@ -21,6 +21,8 @@ const kpis = computed(() => [
     ? { label: '已验证销售额', value: formatNumber(overview.value.sales_total), suffix: '', trend: '可验证订单金额', type: 'success' } : null,
   overview.value.average_order_value !== null && overview.value.average_order_value !== undefined
     ? { label: '已验证平均客单价', value: formatNumber(overview.value.average_order_value), suffix: '', trend: '已验证订单', type: 'warning' } : null,
+  overview.value.amount_verification_rate !== null && overview.value.amount_verification_rate !== undefined
+    ? { label: '金额验证覆盖率', value: formatNumber(overview.value.amount_verification_rate), suffix: '%', trend: `已验证订单 ${overview.value.verified_order_count ?? 0} 笔`, type: 'success' } : null,
   customerAnalysis.value?.unique_customer_count !== null && customerAnalysis.value?.unique_customer_count !== undefined
     ? { label: '客户数量', value: formatNumber(customerAnalysis.value.unique_customer_count), suffix: '位', trend: '按客户编号去重', type: 'primary' } : null,
   customerAnalysis.value?.repeat_customer_rate !== null && customerAnalysis.value?.repeat_customer_rate !== undefined
@@ -44,6 +46,7 @@ const qualityWarnings = computed(() => {
   <div class="kpi-grid"><KpiCard v-for="item in kpis" :key="item.label" :item="item" /></div>
   <el-alert v-if="overview.amount_mismatch_count > 0" class="quality-alert" title="检测到订单金额与单价 × 数量 × 折扣不一致，销售统计已优先使用可验证的计算金额。" type="warning" :closable="false" show-icon />
   <el-alert v-if="overview.unverified_order_count > 0" class="quality-alert" :title="`存在 ${overview.unverified_order_count} 笔订单金额无法通过单价 × 数量 × 折扣验证，未计入已验证销售额。`" type="warning" :closable="false" show-icon />
+  <el-alert v-if="overview.no_usable_amount_order_count > 0" class="quality-alert" :title="`存在 ${overview.no_usable_amount_order_count} 笔订单没有可用金额信息，未参与金额统计。`" type="info" :closable="false" show-icon />
   <div class="dashboard-grid domain-dashboard-grid">
     <el-card v-if="orderAnalysis.product_analysis?.length" class="dashboard-panel" shadow="never"><template #header><strong>商品销售排行</strong></template><BarChart title="商品已验证销售额" :data="orderAnalysis.product_analysis.map(item => ({ name: item.name, value: item.sales_amount }))" /></el-card>
     <el-card v-if="orderAnalysis.category_analysis?.length" class="dashboard-panel" shadow="never"><template #header><strong>品类销售排行</strong></template><BarChart title="品类已验证销售额" :data="orderAnalysis.category_analysis.map(item => ({ name: item.category, value: item.sales_amount }))" /></el-card>

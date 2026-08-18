@@ -46,11 +46,10 @@ class OrderAnalyzer:
         analysis_plan: Sequence[Mapping[str, object]],
     ) -> dict[str, object]:
         supported = {str(item["id"]): bool(item["supported"]) for item in analysis_plan}
-        prepared, quality = self._prepare(frame)
+        prepared, quality, order_level = self._prepare(frame)
         available = prepared.loc[~prepared["_duplicate_row"]].copy()
-        trusted = available.loc[available["_trusted_amount"].notna()].copy()
 
-        overview = self._overview(available, trusted, quality)
+        overview = self._overview(available, order_level, quality)
         result = {
             "overview": overview,
             "product_analysis": (
@@ -71,7 +70,7 @@ class OrderAnalyzer:
         }
         return result
 
-    def _prepare(self, frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, object]]:
+    def _prepare(self, frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, object], pd.DataFrame]:
         rows = frame.copy()
         rows["_duplicate_row"] = rows.duplicated(keep="first")
         rows["_order_id"] = self._text(rows, "order_id")
@@ -108,15 +107,30 @@ class OrderAnalyzer:
             * multiplier.loc[expected_mask]
         )
         rows["_expected_amount"] = pd.to_numeric(rows["_expected_amount"], errors="coerce")
+        raw_source_present = frame["sales_amount"].notna() if "sales_amount" in frame else pd.Series(False, index=rows.index)
         valid_raw = rows["_raw_amount"].notna() & rows["_raw_amount"].ge(0)
-        rows["_trusted_amount"] = rows["_expected_amount"].where(
-            rows["_expected_amount"].notna(), rows["_raw_amount"].where(valid_raw)
+        rows["_verified_amount"] = rows["_expected_amount"]
+        # Compatibility name retained for existing group calculations. It now means verified only.
+        rows["_trusted_amount"] = rows["_verified_amount"]
+        rows["_unverified_amount"] = rows["_raw_amount"].where(
+            rows["_verified_amount"].isna() & valid_raw
         )
+        rows["_amount_comparable"] = rows["_verified_amount"].notna() & valid_raw
         rows["_amount_mismatch"] = (
-            rows["_expected_amount"].notna()
-            & valid_raw
-            & ~rows["_expected_amount"].sub(rows["_raw_amount"]).abs().le(0.01)
+            rows["_amount_comparable"]
+            & ~rows["_verified_amount"].sub(rows["_raw_amount"]).abs().le(0.01)
         )
+        rows["_amount_status"] = "missing"
+        rows.loc[rows["_unverified_amount"].notna(), "_amount_status"] = "unverified"
+        rows.loc[rows["_verified_amount"].notna() & ~valid_raw, "_amount_status"] = "verified"
+        rows.loc[rows["_amount_comparable"] & ~rows["_amount_mismatch"], "_amount_status"] = "verified_match"
+        rows.loc[rows["_amount_mismatch"], "_amount_status"] = "conflict"
+        rows.loc[
+            rows["_verified_amount"].isna() & raw_source_present & ~valid_raw,
+            "_amount_status",
+        ] = "invalid_amount"
+
+        order_level = self._order_level(rows.loc[~rows["_duplicate_row"]].copy())
 
         missing = {
             str(column): int(rows[column].isna().sum())
@@ -140,7 +154,16 @@ class OrderAnalyzer:
             ) if has_discount_column else 0,
             "invalid_age_count": self._invalid_age_count(rows),
             "invalid_status_count": int(invalid_status.sum()) if "status" in rows else 0,
-            "amount_mismatch_count": int(rows.loc[~rows["_duplicate_row"], "_amount_mismatch"].sum()),
+            "amount_mismatch_count": int(order_level["conflict_count"].gt(0).sum()),
+            "amount_comparable_count": int(order_level["has_comparable_amount"].sum()),
+            "amount_mismatch_rate": self._round(
+                order_level["conflict_count"].gt(0).sum()
+                / order_level["has_comparable_amount"].sum() * 100
+            ) if int(order_level["has_comparable_amount"].sum()) else None,
+            "unverified_amount_count": int(rows.loc[~rows["_duplicate_row"], "_unverified_amount"].notna().sum()),
+            "unverified_order_count": int(order_level["has_unverified_amount"].sum()),
+            "unverified_amount_total": self._round(order_level["unverified_amount"].dropna().sum()) if order_level["unverified_amount"].notna().any() else None,
+            "invalid_amount_count": int((rows.loc[~rows["_duplicate_row"], "_amount_status"] == "invalid_amount").sum()),
             **phone_quality,
             **email_quality,
             "contact_complete_count": int(
@@ -155,32 +178,73 @@ class OrderAnalyzer:
         # Temporary validation masks never leave this local preparation result.
         for contact_quality in (phone_quality, email_quality):
             contact_quality.pop("_valid_mask")
-        return rows, quality
+        return rows, quality, order_level
 
     @staticmethod
-    def _overview(rows: pd.DataFrame, trusted: pd.DataFrame, quality: Mapping[str, object]) -> dict[str, object]:
-        values = trusted["_trusted_amount"]
-        order_count = OrderAnalyzer._order_count(rows)
-        valid_count = OrderAnalyzer._order_count(trusted)
+    def _overview(rows: pd.DataFrame, order_level: pd.DataFrame, quality: Mapping[str, object]) -> dict[str, object]:
+        verified_orders = order_level.loc[order_level["has_verified_amount"]].copy()
+        values = verified_orders["verified_amount"].dropna()
+        order_count = int(len(order_level))
+        valid_count = int(len(verified_orders))
+        verified_sales_total = OrderAnalyzer._round(values.sum()) if not values.empty else None
+        average_verified_order_value = OrderAnalyzer._round(values.mean()) if not values.empty else None
         return {
             "record_count": int(quality["row_count"]),
             "order_count": order_count,
-            "sales_total": OrderAnalyzer._round(values.sum()) if not values.empty else None,
-            "average_order_value": OrderAnalyzer._round(values.mean()) if not values.empty else None,
+            "verified_sales_total": verified_sales_total,
+            "verified_order_count": valid_count,
+            "average_verified_order_value": average_verified_order_value,
+            "maximum_verified_order_value": OrderAnalyzer._round(values.max()) if not values.empty else None,
+            "minimum_verified_order_value": OrderAnalyzer._round(values.min()) if not values.empty else None,
+            "median_verified_order_value": OrderAnalyzer._round(values.median()) if not values.empty else None,
+            "sales_total": verified_sales_total,
+            "average_order_value": average_verified_order_value,
             "maximum_order_value": OrderAnalyzer._round(values.max()) if not values.empty else None,
             "minimum_order_value": OrderAnalyzer._round(values.min()) if not values.empty else None,
             "median_order_value": OrderAnalyzer._round(values.median()) if not values.empty else None,
             "valid_sales_order_count": valid_count,
+            "unverified_order_count": int(quality["unverified_order_count"]),
+            "unverified_amount_total": quality["unverified_amount_total"],
+            "amount_comparable_count": int(quality["amount_comparable_count"]),
             "amount_mismatch_count": int(quality["amount_mismatch_count"]),
-            "amount_mismatch_rate": OrderAnalyzer._round(
-                int(quality["amount_mismatch_count"]) / valid_count * 100
-            ) if valid_count else None,
-            "gross_order_amount": OrderAnalyzer._round(values.sum()) if not values.empty else None,
+            "amount_mismatch_rate": quality["amount_mismatch_rate"],
+            "gross_order_amount": verified_sales_total,
             "completed_sales_amount": OrderAnalyzer._status_amount(rows, "completed"),
             "cancelled_order_amount": OrderAnalyzer._status_amount(rows, "cancelled"),
             "refund_related_amount": OrderAnalyzer._status_amount(rows, {"refund_in_progress", "refunded"}),
             "sales_volatility": OrderAnalyzer._volatility(values),
         }
+
+    @staticmethod
+    def _order_level(rows: pd.DataFrame) -> pd.DataFrame:
+        """Build one deterministic aggregate per order after exact duplicate removal."""
+        if rows.empty:
+            return pd.DataFrame(columns=[
+                "order_id", "verified_amount", "unverified_amount", "has_verified_amount",
+                "has_unverified_amount", "has_comparable_amount", "conflict_count",
+            ])
+        working = rows.copy()
+        identifiers = working["_order_id"].astype("string")
+        working["_order_key"] = identifiers.where(
+            identifiers.notna(),
+            "__row__" + working.index.to_series().astype(str),
+        )
+        result: list[dict[str, object]] = []
+        for key, group in working.groupby("_order_key", sort=False):
+            verified = group["_verified_amount"].dropna()
+            unverified = group["_unverified_amount"].dropna()
+            order_id = group["_order_id"].dropna()
+            result.append({
+                "order_key": str(key),
+                "order_id": str(order_id.iloc[0]) if not order_id.empty else None,
+                "verified_amount": OrderAnalyzer._round(verified.sum()) if not verified.empty else None,
+                "unverified_amount": OrderAnalyzer._round(unverified.sum()) if not unverified.empty else None,
+                "has_verified_amount": bool(not verified.empty),
+                "has_unverified_amount": bool(not unverified.empty),
+                "has_comparable_amount": bool(group["_amount_comparable"].any()),
+                "conflict_count": int(group["_amount_mismatch"].sum()),
+            })
+        return pd.DataFrame(result)
 
     @staticmethod
     def _product_analysis(rows: pd.DataFrame) -> list[dict[str, object]]:

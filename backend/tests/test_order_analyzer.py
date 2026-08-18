@@ -41,10 +41,13 @@ def test_order_analyzer_uses_trusted_amount_and_keeps_duplicate_quality_facts() 
 
     assert overview["record_count"] == 5
     assert overview["order_count"] == 4
-    assert overview["sales_total"] == 280.0
-    assert overview["average_order_value"] == 70.0
+    assert overview["verified_sales_total"] == 180.0
+    assert overview["sales_total"] == 180.0
+    assert overview["verified_order_count"] == 2
+    assert overview["average_verified_order_value"] == 90.0
+    assert overview["average_order_value"] == 90.0
     assert overview["amount_mismatch_count"] == 1
-    assert overview["amount_mismatch_rate"] == 25.0
+    assert overview["amount_mismatch_rate"] == 50.0
     assert analysis["product_analysis"][0] == {
         "name": "鼠标",
         "order_count": 2,
@@ -76,6 +79,9 @@ def test_order_analyzer_uses_trusted_amount_and_keeps_duplicate_quality_facts() 
     assert data_quality["invalid_age_count"] == 2
     assert data_quality["invalid_status_count"] == 0
     assert data_quality["amount_mismatch_count"] == 1
+    assert data_quality["amount_comparable_count"] == 2
+    assert data_quality["unverified_order_count"] == 2
+    assert data_quality["unverified_amount_total"] == 100.0
 
 
 def test_order_analyzer_keeps_real_zero_and_skips_missing_discount_rows() -> None:
@@ -100,9 +106,11 @@ def test_order_analyzer_keeps_real_zero_and_skips_missing_discount_rows() -> Non
 def test_order_analyzer_uses_unique_order_ids_for_repeat_customers() -> None:
     frame = pd.DataFrame(
         {
-            "order_id": ["O-1", "O-1", "O-2", "O-3"],
-            "customer_id": ["U-1", "U-1", "U-1", "U-2"],
-            "sales_amount": [20, 20, 30, 10],
+                "order_id": ["O-1", "O-1", "O-2", "O-3"],
+                "customer_id": ["U-1", "U-1", "U-1", "U-2"],
+                "unit_price": [20, 20, 30, 10],
+                "quantity": [1, 1, 1, 1],
+                "sales_amount": [20, 20, 30, 10],
         }
     )
 
@@ -192,3 +200,62 @@ def test_order_analyzer_calculates_aggregate_contact_quality_without_exposing_va
 
 def test_phone_and_email_only_do_not_identify_an_order_dataset() -> None:
     assert OrderModule().match_score({"customer_name", "phone", "email"}) == 0.0
+
+
+def test_order_analyzer_excludes_unverifiable_and_conflicting_raw_amounts_from_verified_sales() -> None:
+    frame = pd.DataFrame({
+        "order_id": ["O-1", "O-2", "O-3", "O-4"],
+        "product": ["A", "A", "B", "C"],
+        "customer_id": ["U-1", "U-2", "U-3", "U-4"],
+        "unit_price": [100, 100, None, 100],
+        "quantity": [2, 2, 2, 2],
+        "discount": [0.8, 0.8, 0.8, None],
+        "sales_amount": [160, 999999.99, 999999.99, 180],
+    })
+
+    analysis = OrderAnalyzer().analyze(frame, _plan(frame))
+    overview = analysis["overview"]
+    quality = analysis["data_quality"]
+
+    assert overview["verified_sales_total"] == 320.0
+    assert overview["sales_total"] == 320.0
+    assert overview["verified_order_count"] == 2
+    assert overview["average_verified_order_value"] == 160.0
+    assert overview["average_order_value"] == 160.0
+    assert quality["unverified_amount_count"] == 2
+    assert quality["unverified_order_count"] == 2
+    assert quality["unverified_amount_total"] == 1000179.99
+    assert quality["amount_mismatch_count"] == 1
+    assert quality["amount_comparable_count"] == 2
+    assert quality["amount_mismatch_rate"] == 50.0
+    assert next(item for item in analysis["product_analysis"] if item["name"] == "B")["sales_amount"] is None
+    assert all(item["sales_amount"] != 999999.99 for item in analysis["customer_analysis"]["top_customers"])
+
+
+def test_order_analyzer_uses_verified_order_level_amount_for_multi_line_orders_and_removes_exact_duplicates() -> None:
+    frame = pd.DataFrame({
+        "order_id": ["O-1", "O-1", "O-1", "O-2"],
+        "product": ["A", "B", "A", "C"],
+        "unit_price": [100, 50, 100, 100],
+        "quantity": [2, 1, 2, 1],
+    })
+
+    analysis = OrderAnalyzer().analyze(frame, _plan(frame))
+    overview = analysis["overview"]
+
+    assert overview["order_count"] == 2
+    assert overview["verified_sales_total"] == 350.0
+    assert overview["verified_order_count"] == 2
+    assert overview["average_verified_order_value"] == 175.0
+    assert overview["maximum_verified_order_value"] == 250.0
+    assert overview["minimum_verified_order_value"] == 100.0
+    assert analysis["data_quality"]["duplicate_row_count"] == 1
+
+
+def test_order_analyzer_verifies_price_times_quantity_when_discount_column_is_absent() -> None:
+    frame = pd.DataFrame({"order_id": ["O-1"], "unit_price": [100], "quantity": [2]})
+
+    analysis = OrderAnalyzer().analyze(frame, _plan(frame))
+
+    assert analysis["overview"]["verified_sales_total"] == 200.0
+    assert analysis["data_quality"]["unverified_order_count"] == 0

@@ -158,10 +158,10 @@ def test_clean_dataset_standardizes_sales_columns_and_removes_invalid_rows(clien
 
 def test_get_dataset_metrics_returns_sales_summary_and_region_ranking(client: TestClient) -> None:
     csv_content = (
-        "date,region,sales_amount,target_amount\n"
-        "2026-07-01,east,1200,1500\n"
-        "2026-07-02,south,800,1000\n"
-        "2026-07-03,east,1800,2000\n"
+        "date,region,unit_price,quantity,sales_amount,target_amount\n"
+        "2026-07-01,east,600,2,1200,1500\n"
+        "2026-07-02,south,400,2,800,1000\n"
+        "2026-07-03,east,900,2,1800,2000\n"
     )
     headers = auth_headers(client)
     upload_response = client.post(
@@ -191,7 +191,7 @@ def test_get_dataset_metrics_returns_sales_summary_and_region_ranking(client: Te
 
 
 def test_generate_business_analysis_returns_structured_fallback_report(client: TestClient) -> None:
-    csv_content = "date,region,sales_amount,target_amount\n2026-07-01,east,800,1000\n2026-07-02,south,400,1000\n"
+    csv_content = "date,region,unit_price,quantity,sales_amount,target_amount\n2026-07-01,east,400,2,800,1000\n2026-07-02,south,200,2,400,1000\n"
     headers = auth_headers(client)
     upload = client.post(
         "/api/v1/datasets/upload", headers=headers,
@@ -214,7 +214,7 @@ def test_generate_business_analysis_returns_structured_fallback_report(client: T
 
 
 def test_export_excel_report_returns_workbook(client: TestClient) -> None:
-    csv_content = "date,region,sales_amount,target_amount\n2026-07-01,east,800,1000\n"
+    csv_content = "date,region,unit_price,quantity,sales_amount,target_amount\n2026-07-01,east,400,2,800,1000\n"
     headers = auth_headers(client)
     upload = client.post("/api/v1/datasets/upload", headers=headers, files={"file": ("sales.csv", BytesIO(csv_content.encode()), "text/csv")})
     dataset_id = upload.json()["data"]["id"]
@@ -231,7 +231,7 @@ def test_export_excel_report_returns_workbook(client: TestClient) -> None:
 
 @pytest.mark.parametrize(("report_type", "content_type"), [("word", "application/vnd.openxmlformats-officedocument"), ("pdf", "application/pdf")])
 def test_export_word_and_pdf_reports(client: TestClient, report_type: str, content_type: str) -> None:
-    csv_content = "date,region,sales_amount,target_amount\n2026-07-01,east,800,1000\n"
+    csv_content = "date,region,unit_price,quantity,sales_amount,target_amount\n2026-07-01,east,400,2,800,1000\n"
     headers = auth_headers(client)
     upload = client.post("/api/v1/datasets/upload", headers=headers, files={"file": ("sales.csv", BytesIO(csv_content.encode()), "text/csv")})
     dataset_id = upload.json()["data"]["id"]

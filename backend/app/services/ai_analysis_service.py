@@ -49,7 +49,12 @@ class AIAnalysisService:
                     "order_count": overview.get("order_count"),
                     "product_quantity": metrics.get("product_quantity"),
                     "sales_total": (
-                        {"total": overview.get("sales_total"), "average": overview.get("average_order_value")}
+                        {
+                            "total": overview.get("sales_total"),
+                            "average": overview.get("average_order_value"),
+                            "verified_sales_total": overview.get("verified_sales_total"),
+                            "average_verified_order_value": overview.get("average_verified_order_value"),
+                        }
                         if overview.get("sales_total") is not None else None
                     ),
                     "product_sales": order_analysis.get("product_analysis"),
@@ -217,7 +222,7 @@ class AIAnalysisService:
             summary_parts.append(f"去重后订单数 {overview.get('order_count')}")
         if overview.get("sales_total") is not None:
             summary_parts.append(
-                f"可信销售额 {overview['sales_total']}，平均客单价 {overview.get('average_order_value')}"
+                f"已验证销售额 {overview['sales_total']}，已验证平均客单价 {overview.get('average_order_value')}"
             )
         completion_rate = supported.get("target_completion")
         if completion_rate is not None and float(completion_rate) < 80:
@@ -247,14 +252,14 @@ class AIAnalysisService:
         quality = supported.get("data_quality_analysis")
         if isinstance(quality, dict):
             quality_messages = []
-            for key, label in (("duplicate_row_count", "完整重复行"), ("duplicate_order_id_count", "重复订单号"), ("invalid_date_count", "无效日期"), ("amount_mismatch_count", "金额不一致记录"), ("phone_invalid_count", "无效联系方式"), ("email_invalid_count", "无效邮箱")):
+            for key, label in (("duplicate_row_count", "完整重复行"), ("duplicate_order_id_count", "重复订单号"), ("invalid_date_count", "无效日期"), ("amount_mismatch_count", "金额不一致记录"), ("unverified_order_count", "无法验证金额订单"), ("phone_invalid_count", "无效联系方式"), ("email_invalid_count", "无效邮箱")):
                 value = quality.get(key, 0)
                 if value:
                     quality_messages.append(f"{label} {value} 条")
             if quality_messages:
                 anomalies.append("数据质量提示：" + "，".join(quality_messages) + "。")
                 problems.append("部分订单字段存在可验证的数据质量问题，业务结论应结合清洗结果复核。")
-                recommendations.append("优先修复重复、日期或金额不一致记录；销售汇总已按可信金额口径计算。")
+                recommendations.append("优先修复重复、日期、金额不一致或无法验证金额记录；销售汇总仅按已验证金额口径计算。")
         trend = supported.get("sales_trend") or []
         if len(trend) >= 2:
             first, last = trend[0], trend[-1]
@@ -503,6 +508,10 @@ class AIAnalysisService:
             customer.pop("customer_name", None)
         for key in ("phone", "email", "mobile", "telephone"):
             (sanitized_order_analysis.get("data_quality") or {}).pop(key, None)
+        # 原始金额未通过单价、数量和折扣校验时只是待复核数据，不能交给模型当作销售事实。
+        (sanitized_order_analysis.get("data_quality") or {}).pop(
+            "unverified_amount_total", None
+        )
         return {
             "selected_module": selected_module,
             "available_fields": analysis_context.get("available_fields", []),
@@ -531,6 +540,7 @@ class AIAnalysisService:
         )
         order_constraints = (
             "当前是订单数据：只能使用 order_analysis 中已计算的聚合事实；不得接触或复述电话、邮箱、备注、客户姓名等个人信息；"
+            "已验证销售额仅指可由单价 × 数量 × 有效折扣核验的金额；未验证原始金额不能视为销售额或收入。"
             "不得把总订单金额等同于已完成收入，不得推断利润、毛利、库存、营销因果或个人属性。"
             "若存在数据质量提示，须先说明其对结论可靠性的限制。\n"
             if selected_module == "order"

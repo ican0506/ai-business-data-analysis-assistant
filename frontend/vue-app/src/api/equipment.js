@@ -19,3 +19,8 @@ export async function getEquipmentAnomalies() {
   const response = await http.get('/api/v1/equipment-management/anomalies')
   return response.data
 }
+
+export async function diagnoseEquipment(equipmentName) {
+  const response = await http.post(`/api/v1/equipment-diagnosis/${encodeURIComponent(equipmentName)}`)
+  return response.data
+}

@@ -8,6 +8,7 @@ import AiAnalysisView from '../views/AiAnalysisView.vue'
 import DownloadCenterView from '../views/DownloadCenterView.vue'
 import ManufacturingDashboardView from '../views/ManufacturingDashboardView.vue'
 import EquipmentManagementView from '../views/EquipmentManagementView.vue'
+import EquipmentDiagnosisView from '../views/EquipmentDiagnosisView.vue'
 import NotFoundView from '../views/NotFoundView.vue'
 import { TOKEN_STORAGE_KEY } from '../stores/auth'
 
@@ -24,6 +25,7 @@ const router = createRouter({
     { path: '/downloads', name: 'downloads', component: DownloadCenterView },
     { path: '/manufacturing/dashboard', name: 'manufacturing-dashboard', component: ManufacturingDashboardView },
     { path: '/manufacturing/equipment', name: 'equipment-management', component: EquipmentManagementView },
+    { path: '/manufacturing/equipment/:name/diagnosis', name: 'equipment-diagnosis', component: EquipmentDiagnosisView },
     { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundView, meta: { public: true } },
   ],
 })

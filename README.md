@@ -115,12 +115,32 @@ npm run dev
 
 ```powershell
 Copy-Item .env.example .env
-# 编辑 .env：设置 MYSQL_ROOT_PASSWORD 和 JWT_SECRET_KEY
+# 编辑 .env：替换 MYSQL_ROOT_PASSWORD、JWT_SECRET_KEY；如使用 DeepSeek 再替换 LLM_API_KEY
 docker compose config
-docker compose up --build -d
+# 首次启动：前台构建并启动，便于查看 MySQL 初始化和服务日志
+docker compose up --build
 ```
 
-默认入口：前端 <http://localhost/>，Swagger <http://localhost:8001/docs>，MySQL 主机端口 `3308`。使用 `docker compose down` 停止并保留数据；不要随意执行 `docker compose down -v`。
+首次启动成功后，可按 `Ctrl+C` 停止前台进程，再使用后台模式：
+
+```powershell
+docker compose up -d
+docker compose ps
+```
+
+访问地址：
+
+- 前端：<http://localhost>
+- 后端：<http://localhost:8000>
+- Swagger：<http://localhost:8000/docs>
+
+停止服务但保留数据库数据：
+
+```powershell
+docker compose down
+```
+
+MySQL 在**首次创建空的 `mysql_data` volume** 时，会按文件名顺序执行 `backend/sql/001` 至 `008`：创建用户、数据集、清洗记录、审计日志、字段映射、制造业表、演示数据和经营报告表。已有 volume 不会重复执行这些 SQL；不要随意执行 `docker compose down -v`，否则会删除本地数据库数据。
 
 ## 环境变量
 

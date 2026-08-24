@@ -9,6 +9,8 @@ services:
       - "${MYSQL_PORT:-3308}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
+      # MySQL 仅在首次创建空 volume 时按文件名顺序执行这些初始化脚本。
+      - ./backend/sql:/docker-entrypoint-initdb.d:ro
     networks: [app_net]
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p$${MYSQL_ROOT_PASSWORD}"]
@@ -29,14 +31,14 @@ services:
       MYSQL_USER: root
       MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请在 .env 中设置 MYSQL_ROOT_PASSWORD}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?请在 .env 中设置 JWT_SECRET_KEY}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:8080,http://127.0.0.1:8080}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost,http://127.0.0.1}
       LLM_PROVIDER: ${LLM_PROVIDER:-rule_based}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
       LLM_MODEL: ${LLM_MODEL:-deepseek-chat}
       STORAGE_ROOT: /storage
     ports:
-      - "${BACKEND_PORT:-8001}:8000"
+      - "${BACKEND_PORT:-8000}:8000"
     volumes:
       - ./storage:/storage
     depends_on:
@@ -44,8 +46,9 @@ services:
         condition: service_healthy
     networks: [app_net]
 
-  nginx:
+  frontend:
     build:
+      # Vue 项目位于 frontend/vue-app，Dockerfile 以仓库根目录为构建上下文。
       context: .
       dockerfile: frontend/Dockerfile
     restart: unless-stopped

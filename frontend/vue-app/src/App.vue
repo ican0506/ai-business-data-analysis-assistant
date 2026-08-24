@@ -19,6 +19,7 @@ const navigationItems = [
   { index: '/ai-analysis', title: 'AI分析报告', description: '智能业务洞察' },
   { index: '/downloads', title: '报告下载中心', description: '导出文件管理' },
   { index: '/manufacturing/dashboard', title: '生产经营驾驶舱', description: '制造业运营概览' },
+  { index: '/manufacturing/equipment', title: '设备管理', description: '状态与异常告警' },
 ]
 
 function logout() {

@@ -10,6 +10,7 @@ from app.api.v1.auth import router as auth_router
 from app.api.v1.datasets import router as datasets_router
 from app.api.v1.audit_logs import router as audit_logs_router
 from app.api.v1.equipment_management import router as equipment_management_router
+from app.api.v1.equipment_diagnosis import router as equipment_diagnosis_router
 from app.api.v1.manufacturing import router as manufacturing_router
 from app.core.config import get_settings
 from app.db.session import create_database_tables
@@ -38,6 +39,7 @@ def create_app(create_tables: bool = True) -> FastAPI:
     app.include_router(audit_logs_router)
     app.include_router(manufacturing_router)
     app.include_router(equipment_management_router)
+    app.include_router(equipment_diagnosis_router)
     app.mount("/static", StaticFiles(directory=settings.resolved_frontend_index_path.parent / "assets"), name="static")
 
     @app.get("/", include_in_schema=False)

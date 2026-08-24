@@ -521,8 +521,6 @@ class AIAnalysisService:
 
     @staticmethod
     def _generate_with_deepseek(metrics: dict, analysis_context: dict, fallback: dict) -> dict:
-        from openai import OpenAI
-
         settings = get_settings()
         selected_module = (analysis_context.get("selected_module") or {"id": "order"}).get("id")
         student_constraints = (
@@ -558,20 +556,7 @@ class AIAnalysisService:
             f"真实指标：{AIAnalysisService._deepseek_metrics_payload(metrics, analysis_context)}"
         )
         try:
-            client = OpenAI(
-                api_key=settings.llm_api_key,
-                base_url=settings.llm_base_url,
-                timeout=settings.llm_timeout_seconds,
-                max_retries=0,
-            )
-            response = client.chat.completions.create(
-                model=settings.llm_model,
-                messages=[{"role": "user", "content": prompt}],
-                reasoning_effort="max",
-                extra_body={"thinking": {"type": "enabled"}},
-                response_format={"type": "json_object"},
-            )
-            generated = json.loads(response.choices[0].message.content or "{}")
+            generated = AIAnalysisService._request_deepseek_json(prompt)
             return {**fallback, **generated, "mode": "deepseek"}
         except Exception as error:
             logger.warning(
@@ -581,3 +566,24 @@ class AIAnalysisService:
                 type(error).__name__,
             )
             return fallback
+
+    @staticmethod
+    def _request_deepseek_json(prompt: str) -> dict:
+        """Call the project's configured DeepSeek endpoint for one JSON response."""
+        from openai import OpenAI
+
+        settings = get_settings()
+        client = OpenAI(
+            api_key=settings.llm_api_key,
+            base_url=settings.llm_base_url,
+            timeout=settings.llm_timeout_seconds,
+            max_retries=0,
+        )
+        response = client.chat.completions.create(
+            model=settings.llm_model,
+            messages=[{"role": "user", "content": prompt}],
+            reasoning_effort="max",
+            extra_body={"thinking": {"type": "enabled"}},
+            response_format={"type": "json_object"},
+        )
+        return json.loads(response.choices[0].message.content or "{}")

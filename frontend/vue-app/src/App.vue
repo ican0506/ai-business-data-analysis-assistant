@@ -21,6 +21,7 @@ const navigationItems = [
   { index: '/manufacturing/dashboard', title: '生产经营驾驶舱', description: '制造业运营概览' },
   { index: '/manufacturing/equipment', title: '设备管理', description: '状态与异常告警' },
   { index: '/manufacturing/reports', title: '经营报告中心', description: '快照与报告导出' },
+  { index: '/manufacturing/prediction', title: '预测与预警', description: '设备、能耗与生产预测' },
 ]
 
 function logout() {

@@ -7,6 +7,7 @@ from app.models.dataset_cleaning import DatasetCleaningRun  # noqa: F401
 from app.models.dataset_field_mapping_override import DatasetFieldMappingOverride  # noqa: F401
 from app.models.manufacturing import EnergyRecord, EquipmentRecord, ProductionRecord  # noqa: F401
 from app.models.manufacturing_business_report import ManufacturingBusinessReport  # noqa: F401
+from app.models.manufacturing_prediction import ManufacturingPredictionRun  # noqa: F401
 from app.models.operation_log import OperationLog  # noqa: F401
 from app.models.user import Base
 

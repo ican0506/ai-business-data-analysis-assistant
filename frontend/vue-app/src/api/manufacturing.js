@@ -36,3 +36,18 @@ export async function downloadManufacturingReport(reportId, reportFormat) {
     returnRawResponse: true,
   })
 }
+
+export async function createPrediction(payload) {
+  const response = await http.post('/api/v1/manufacturing-predictions', payload)
+  return response.data
+}
+
+export async function getPredictions(params = {}) {
+  const response = await http.get('/api/v1/manufacturing-predictions', { params })
+  return response.data
+}
+
+export async function getPredictionDetail(predictionId) {
+  const response = await http.get(`/api/v1/manufacturing-predictions/${predictionId}`)
+  return response.data
+}

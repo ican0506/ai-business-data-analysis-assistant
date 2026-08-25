@@ -10,6 +10,7 @@ import ManufacturingDashboardView from '../views/ManufacturingDashboardView.vue'
 import EquipmentManagementView from '../views/EquipmentManagementView.vue'
 import EquipmentDiagnosisView from '../views/EquipmentDiagnosisView.vue'
 import ManufacturingReportsView from '../views/ManufacturingReportsView.vue'
+import ManufacturingPredictionView from '../views/ManufacturingPredictionView.vue'
 import NotFoundView from '../views/NotFoundView.vue'
 import { TOKEN_STORAGE_KEY } from '../stores/auth'
 
@@ -28,6 +29,7 @@ const router = createRouter({
     { path: '/manufacturing/equipment', name: 'equipment-management', component: EquipmentManagementView },
     { path: '/manufacturing/equipment/:name/diagnosis', name: 'equipment-diagnosis', component: EquipmentDiagnosisView },
     { path: '/manufacturing/reports', name: 'manufacturing-reports', component: ManufacturingReportsView },
+    { path: '/manufacturing/prediction', name: 'manufacturing-prediction', component: ManufacturingPredictionView },
     { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundView, meta: { public: true } },
   ],
 })

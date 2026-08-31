@@ -235,3 +235,21 @@ def test_engine_marks_a_missing_group_dimension_as_unavailable() -> None:
     assert result["unavailable"] == [
         {"metric": "sales_amount", "reason": "region 字段不可用于分组"}
     ]
+
+
+def test_sales_quantity_keeps_equal_values_from_distinct_order_rows() -> None:
+    frame = pd.DataFrame(
+        {
+            "order_id": ["O-1", "O-2", "O-3"],
+            "product": ["A", "B", "C"],
+            "quantity": [2, 2, 3],
+            "unit_price": [10, 10, 10],
+        }
+    )
+
+    result = MetricQueryEngine().query(
+        frame,
+        _plan(metrics=[DataChatMetric.SALES_QUANTITY]),
+    )
+
+    assert result["metrics"] == {"sales_quantity": 7.0}

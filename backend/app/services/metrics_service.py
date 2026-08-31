@@ -19,6 +19,16 @@ class MetricsService:
         self._override_service = override_service or FieldMappingOverrideService()
 
     def build_metrics(self, db: Session, dataset: Dataset) -> dict:
+        frame = self.load_cleaned_frame(db, dataset)
+        return self._build_metrics_from_frame(
+            frame,
+            dataset_id=dataset.id,
+            field_overrides=self._override_service.get_overrides(db, dataset.id),
+        )
+
+    @staticmethod
+    def load_cleaned_frame(db: Session, dataset: Dataset) -> pd.DataFrame:
+        """Load the latest cleaned CSV once for every deterministic consumer."""
         run = db.scalar(
             select(DatasetCleaningRun)
             .where(DatasetCleaningRun.dataset_id == dataset.id)
@@ -30,12 +40,7 @@ class MetricsService:
         path = get_settings().resolved_storage_root / Path(run.cleaned_storage_path)
         if not path.is_file():
             raise ValueError("清洗后的数据文件不存在，请重新清洗")
-        frame = pd.read_csv(path, encoding="utf-8-sig")
-        return self._build_metrics_from_frame(
-            frame,
-            dataset_id=dataset.id,
-            field_overrides=self._override_service.get_overrides(db, dataset.id),
-        )
+        return pd.read_csv(path, encoding="utf-8-sig")
 
     def _build_metrics_from_frame(
         self,

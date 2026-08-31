@@ -76,3 +76,10 @@ class DataChatQueryPlan(BaseModel):
         if self.group_by and DataChatMetric.AVERAGE_ORDER_VALUE in self.metrics:
             raise ValueError("average_order_value 暂不支持按维度分组")
         return self
+
+
+class DataChatQueryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    dataset_id: int = Field(ge=1)
+    question: str = Field(min_length=1, max_length=1000)

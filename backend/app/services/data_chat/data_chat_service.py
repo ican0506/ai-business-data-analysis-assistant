@@ -15,6 +15,7 @@ from app.services.data_chat.question_interpreter import (
     QueryPlanParseError,
     RuleBasedQuestionInterpreter,
 )
+from app.services.data_chat.answer_generator import AnswerGenerator
 
 
 class DataChatServiceError(ValueError):
@@ -33,6 +34,7 @@ class DataChatService:
         llm_interpreter: LLMQuestionInterpreter | None = None,
         metric_query_engine: MetricQueryEngine | None = None,
         analysis_engine: AnalysisEngine | None = None,
+        answer_generator: AnswerGenerator | None = None,
     ) -> None:
         self._metrics_service = metrics_service or MetricsService()
         self._field_mapping_service = field_mapping_service or FieldMappingOverrideService()
@@ -40,6 +42,7 @@ class DataChatService:
         self._llm_interpreter = llm_interpreter or LLMQuestionInterpreter()
         self._metric_query_engine = metric_query_engine or MetricQueryEngine()
         self._analysis_engine = analysis_engine or AnalysisEngine()
+        self._answer_generator = answer_generator or AnswerGenerator()
 
     def query(self, db, current_user, dataset_id: int, question: str) -> dict[str, object]:
         dataset = db.get(Dataset, dataset_id)
@@ -70,12 +73,20 @@ class DataChatService:
             raise DataChatServiceError(400, str(error)) from error
 
         result = self._metric_query_engine.query(frame, plan, field_overrides=overrides)
+        query_plan_payload = plan.model_dump(mode="json")
+        answer = self._answer_generator.generate(
+            question=question,
+            query_plan=query_plan_payload,
+            result=result,
+            dataset_name=dataset.original_filename,
+        )
         return {
             "question": question,
             "dataset": {"id": dataset.id, "original_filename": dataset.original_filename},
-            "query_plan": plan.model_dump(mode="json"),
+            "query_plan": query_plan_payload,
             "result": result,
             "interpreter_mode": interpreter_mode,
+            **answer,
         }
 
     def _resolve_plan(

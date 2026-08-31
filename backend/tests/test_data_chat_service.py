@@ -23,6 +23,11 @@ class _MetricEngine:
         return {"status": "success", "metrics": {"sales_amount": 20.0}, "plan_metrics": [item.value for item in plan.metrics]}
 
 
+class _AnswerGenerator:
+    def generate(self, **_kwargs: object) -> dict[str, str]:
+        return {"answer": "销售额为20.00元。", "answer_mode": "rule_based"}
+
+
 def _service(dataset: object, engine: _MetricEngine | None = None) -> DataChatService:
     return DataChatService(
         metrics_service=SimpleNamespace(
@@ -33,6 +38,7 @@ def _service(dataset: object, engine: _MetricEngine | None = None) -> DataChatSe
         field_mapping_service=SimpleNamespace(get_overrides=lambda _db, _dataset_id: {"source_price": "unit_price"}),
         rule_interpreter=_RuleInterpreter(),
         metric_query_engine=engine or _MetricEngine(),
+        answer_generator=_AnswerGenerator(),
     )
 
 
@@ -51,6 +57,8 @@ def test_service_loads_the_latest_cleaned_frame_and_passes_mapping_overrides() -
     assert result["result"]["metrics"]["sales_amount"] == 20.0
     assert result["query_plan"]["metrics"] == ["sales_amount"]
     assert engine.received_overrides == {"source_price": "unit_price"}
+    assert result["answer"] == "销售额为20.00元。"
+    assert result["answer_mode"] == "rule_based"
 
 
 def test_service_rejects_another_users_dataset_before_reading_data() -> None:

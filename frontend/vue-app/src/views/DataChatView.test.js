@@ -16,6 +16,16 @@ const SelectStub = { props: ['modelValue'], emits: ['update:modelValue'], templa
 
 async function flush() { await Promise.resolve(); await nextTick(); await Promise.resolve(); await nextTick() }
 
+function createDeferred() {
+  let resolve
+  let reject
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
 function mountView() {
   const host = document.createElement('div')
   document.body.appendChild(host)
@@ -78,6 +88,60 @@ describe('DataChatView', () => {
     expect(host.querySelectorAll('.message-row.user')).toHaveLength(1)
     expect(host.querySelector('.message-row.user .message')).not.toBeNull()
     expect(sessionStorage.getItem('data-chat-messages:7')).toContain('5月销售额是多少？')
+  })
+
+  it('请求期间以单条 AI loading 气泡展示，成功后替换为真实回答', async () => {
+    const deferred = createDeferred()
+    queryDataChat.mockReturnValue(deferred.promise)
+    const host = mountView()
+    await flush()
+
+    const select = host.querySelector('select')
+    select.value = '7'; select.dispatchEvent(new Event('change')); await flush()
+    const input = host.querySelector('textarea')
+    input.value = '5月销售额是多少？'; input.dispatchEvent(new Event('input')); await flush()
+    const send = [...host.querySelectorAll('button')].find((item) => item.textContent.includes('发送'))
+    send.click(); await flush()
+
+    expect(host.querySelectorAll('.message-row.assistant .message.loading')).toHaveLength(1)
+    expect(host.textContent).toContain('正在分析数据')
+    expect(host.querySelector('.thinking')).toBeNull()
+    expect(send.disabled).toBe(true)
+    expect(queryDataChat).toHaveBeenCalledOnce()
+    expect(host.querySelector('.message-row.user')).not.toBeNull()
+
+    deferred.resolve({
+      dataset: { id: 7, original_filename: 'orders_2026.xlsx' },
+      query_plan: { metrics: ['sales_amount'], filters: {} },
+      result: { metrics: { sales_amount: 20 } },
+      interpreter_mode: 'rule', answer: '销售总额为20.00元。', answer_mode: 'rule_based',
+    })
+    await flush()
+
+    expect(host.querySelectorAll('.message-row.assistant .message.loading')).toHaveLength(0)
+    expect(host.textContent).toContain('销售总额为20.00元。')
+  })
+
+  it('请求失败后移除 loading 气泡，不遗留分析中提示', async () => {
+    const deferred = createDeferred()
+    queryDataChat.mockReturnValue(deferred.promise)
+    const host = mountView()
+    await flush()
+
+    const select = host.querySelector('select')
+    select.value = '7'; select.dispatchEvent(new Event('change')); await flush()
+    const input = host.querySelector('textarea')
+    input.value = '无法回答的问题'; input.dispatchEvent(new Event('input')); await flush()
+    const send = [...host.querySelectorAll('button')].find((item) => item.textContent.includes('发送'))
+    send.click(); await flush()
+    expect(host.querySelectorAll('.message-row.assistant .message.loading')).toHaveLength(1)
+
+    deferred.reject(new Error('请求失败'))
+    await flush()
+
+    expect(host.querySelectorAll('.message-row.assistant .message.loading')).toHaveLength(0)
+    expect(host.textContent).not.toContain('正在分析数据')
+    expect(host.textContent).toContain('请求失败')
   })
 
   it('推荐问题会填入输入框，后端错误会展示', async () => {

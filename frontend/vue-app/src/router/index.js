@@ -11,6 +11,7 @@ import EquipmentManagementView from '../views/EquipmentManagementView.vue'
 import EquipmentDiagnosisView from '../views/EquipmentDiagnosisView.vue'
 import ManufacturingReportsView from '../views/ManufacturingReportsView.vue'
 import ManufacturingPredictionView from '../views/ManufacturingPredictionView.vue'
+import DataChatView from '../views/DataChatView.vue'
 import NotFoundView from '../views/NotFoundView.vue'
 import { TOKEN_STORAGE_KEY } from '../stores/auth'
 
@@ -25,6 +26,7 @@ const router = createRouter({
     { path: '/datasets', name: 'datasets', component: DatasetManagementView },
     { path: '/ai-analysis', name: 'ai-analysis', component: AiAnalysisView },
     { path: '/downloads', name: 'downloads', component: DownloadCenterView },
+    { path: '/data-chat', name: 'DataChat', component: DataChatView },
     { path: '/manufacturing/dashboard', name: 'manufacturing-dashboard', component: ManufacturingDashboardView },
     { path: '/manufacturing/equipment', name: 'equipment-management', component: EquipmentManagementView },
     { path: '/manufacturing/equipment/:name/diagnosis', name: 'equipment-diagnosis', component: EquipmentDiagnosisView },

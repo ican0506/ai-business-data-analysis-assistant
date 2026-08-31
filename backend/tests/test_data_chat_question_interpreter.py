@@ -43,6 +43,32 @@ def test_rule_interpreter_parses_month_metrics_filters_top_n_and_trend() -> None
     assert trend is not None and trend.group_by[0].value == "month"
 
 
+@pytest.mark.parametrize(
+    ("question", "metric", "dimension"),
+    [
+        ("哪个地区销售额最高？", DataChatMetric.SALES_AMOUNT, "region"),
+        ("销售额最高的商品是什么？", DataChatMetric.SALES_AMOUNT, "product"),
+        ("哪个品类销售额最高？", DataChatMetric.SALES_AMOUNT, "category"),
+        ("哪个商品销量最高？", DataChatMetric.SALES_QUANTITY, "product"),
+    ],
+)
+def test_rule_interpreter_parses_top_one_questions(question: str, metric: DataChatMetric, dimension: str) -> None:
+    plan = RuleBasedQuestionInterpreter().interpret(question, _frame())
+
+    assert plan is not None
+    assert plan.metrics == [metric]
+    assert [item.value for item in plan.group_by] == [dimension]
+    assert plan.sort is not None and plan.sort.direction.value == "desc"
+    assert plan.limit == 1
+
+
+def test_rule_interpreter_keeps_an_explicit_top_n_limit() -> None:
+    plan = RuleBasedQuestionInterpreter().interpret("销售额最高的5个商品是什么？", _frame())
+
+    assert plan is not None
+    assert plan.limit == 5
+
+
 def test_rule_interpreter_requires_year_for_an_ambiguous_month() -> None:
     frame = _frame(["2025-05-01", "2026-05-01"])
 

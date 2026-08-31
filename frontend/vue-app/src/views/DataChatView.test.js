@@ -37,6 +37,7 @@ function mountView() {
 describe('DataChatView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    sessionStorage.clear()
     getDatasets.mockResolvedValue([{ id: 7, original_filename: 'orders_2026.xlsx' }])
   })
   afterEach(() => document.body.replaceChildren())
@@ -74,6 +75,9 @@ describe('DataChatView', () => {
     expect(host.textContent).toContain('2026年5月销售总额为328,560.50元。')
     expect(host.textContent).toContain('数据依据')
     expect(host.textContent).toContain('AI 解释')
+    expect(host.querySelectorAll('.message-row.user')).toHaveLength(1)
+    expect(host.querySelector('.message-row.user .message')).not.toBeNull()
+    expect(sessionStorage.getItem('data-chat-messages:7')).toContain('5月销售额是多少？')
   })
 
   it('推荐问题会填入输入框，后端错误会展示', async () => {
@@ -90,5 +94,56 @@ describe('DataChatView', () => {
     const send = [...host.querySelectorAll('button')].find((item) => item.textContent.includes('发送'))
     send.click(); await flush()
     expect(host.textContent).toContain('当前数据集尚未完成清洗')
+  })
+
+  it('恢复最近选择的数据集及其会话，不重新调用问答接口', async () => {
+    sessionStorage.setItem('data-chat-selected-dataset', '7')
+    sessionStorage.setItem('data-chat-messages:7', JSON.stringify([
+      { role: 'user', content: '5月销售额是多少？' },
+      { role: 'assistant', content: '销售总额为20.00元。', evidence: { dataset: { original_filename: 'orders_2026.xlsx' }, query_plan: { metrics: ['sales_amount'], filters: {} }, result: { metrics: { sales_amount: 20 } }, interpreter_mode: 'rule', answer_mode: 'rule_based' } },
+    ]))
+    const host = mountView()
+    await flush()
+
+    expect(host.querySelector('select').value).toBe('7')
+    expect(host.textContent).toContain('销售总额为20.00元。')
+    expect(queryDataChat).not.toHaveBeenCalled()
+  })
+
+  it('按数据集隔离会话，并且只清空当前数据集', async () => {
+    getDatasets.mockResolvedValue([{ id: 8, original_filename: 'A.xlsx' }, { id: 9, original_filename: 'B.xlsx' }])
+    sessionStorage.setItem('data-chat-selected-dataset', '8')
+    sessionStorage.setItem('data-chat-messages:8', JSON.stringify([{ role: 'user', content: '数据集A问题' }]))
+    sessionStorage.setItem('data-chat-messages:9', JSON.stringify([{ role: 'user', content: '数据集B问题' }]))
+    const host = mountView()
+    await flush()
+
+    expect(host.textContent).toContain('数据集A问题')
+    const select = host.querySelector('select')
+    select.value = '9'; select.dispatchEvent(new Event('change')); await flush()
+    expect(host.textContent).toContain('数据集B问题')
+    const clear = [...host.querySelectorAll('button')].find((item) => item.textContent.includes('清空对话'))
+    clear.click(); await flush()
+    expect(sessionStorage.getItem('data-chat-messages:9')).toBeNull()
+    expect(sessionStorage.getItem('data-chat-messages:8')).toContain('数据集A问题')
+  })
+
+  it('遇到损坏的会话缓存时安全回退为空状态', async () => {
+    sessionStorage.setItem('data-chat-selected-dataset', '7')
+    sessionStorage.setItem('data-chat-messages:7', '{invalid json')
+    const host = mountView()
+    await flush()
+
+    expect(host.textContent).toContain('5月份销售总额是多少？')
+    expect(sessionStorage.getItem('data-chat-messages:7')).toBeNull()
+  })
+
+  it('最近数据集已失效时清除选择缓存而不继续使用', async () => {
+    sessionStorage.setItem('data-chat-selected-dataset', '999')
+    const host = mountView()
+    await flush()
+
+    expect(host.querySelector('select').value).toBe('')
+    expect(sessionStorage.getItem('data-chat-selected-dataset')).toBeNull()
   })
 })

@@ -78,3 +78,30 @@ def test_data_chat_api_requires_login_and_isolates_datasets(client: TestClient) 
     )
     assert response.status_code == 403
     assert response.json()["detail"] == "无权查询此数据集"
+
+
+def test_data_chat_api_answers_the_highest_sales_region(client: TestClient) -> None:
+    headers = _headers(client, "chat_top_one")
+    upload = client.post(
+        "/api/v1/datasets/upload",
+        headers=headers,
+        files={"file": ("regional_orders.csv", BytesIO(
+            "order_id,product,region,unit_price,quantity,date\n"
+            "O-1,A,西南,33974.4,1,2026-05-01\n"
+            "O-2,B,华东,100,1,2026-05-02\n".encode()
+        ), "text/csv")},
+    )
+    dataset_id = upload.json()["data"]["id"]
+    assert client.post(f"/api/v1/datasets/{dataset_id}/clean", headers=headers).status_code == 201
+
+    response = client.post(
+        "/api/v1/data-chat/query",
+        headers=headers,
+        json={"dataset_id": dataset_id, "question": "哪个地区销售额最高？"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["query_plan"]["group_by"] == ["region"]
+    assert payload["query_plan"]["limit"] == 1
+    assert payload["result"]["rows"] == [{"region": "西南", "sales_amount": 33974.4}]

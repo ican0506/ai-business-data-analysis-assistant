@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 
 import { getDatasets } from '../api/datasets'
@@ -19,6 +19,8 @@ const question = ref('')
 const messages = ref([])
 const loading = ref(false)
 const errorMessage = ref('')
+const messageListRef = ref(null)
+let loadingMessageSequence = 0
 
 const suggestions = [
   '5月份销售总额是多少？',
@@ -56,6 +58,11 @@ function persistMessages() {
   saveDataChatMessages(activeDatasetId.value, messages.value)
 }
 
+async function scrollToLatestMessage() {
+  await nextTick()
+  messageListRef.value?.lastElementChild?.scrollIntoView?.({ block: 'end', behavior: 'smooth' })
+}
+
 function clearConversation() {
   clearDataChatMessages(activeDatasetId.value)
   messages.value = []
@@ -85,11 +92,18 @@ async function sendQuestion() {
   question.value = ''
   loading.value = true
   errorMessage.value = ''
+  const loadingMessageId = `loading-${++loadingMessageSequence}`
+  const loadingMessage = { id: loadingMessageId, role: 'assistant', type: 'loading', content: '正在分析数据…' }
+  messages.value.push(loadingMessage)
+  void scrollToLatestMessage()
   try {
     const data = await queryDataChat({ dataset_id: activeDatasetId.value, question: content })
+    messages.value = messages.value.filter((message) => message.id !== loadingMessageId)
     messages.value.push({ role: 'assistant', content: data.answer, evidence: data })
     persistMessages()
+    void scrollToLatestMessage()
   } catch (error) {
+    messages.value = messages.value.filter((message) => message.id !== loadingMessageId)
     errorMessage.value = error.message || '数据问答失败，请稍后重试。'
   } finally {
     loading.value = false
@@ -146,12 +160,13 @@ onMounted(() => { void loadDatasets() })
         <el-empty :image-size="92" description="你可以直接询问当前数据集中的业务指标。" />
         <div class="suggestions"><el-button v-for="item in suggestions" :key="item" plain @click="fillQuestion(item)">{{ item }}</el-button></div>
       </div>
-      <div v-else class="message-list">
-        <div v-for="(message, index) in messages" :key="index" class="message-row" :class="message.role">
-        <article class="message" :class="message.role">
+      <div v-else ref="messageListRef" class="message-list">
+        <div v-for="(message, index) in messages" :key="message.id || index" class="message-row" :class="message.role">
+        <article class="message" :class="[message.role, { loading: message.type === 'loading' }]">
           <span class="message-role">{{ message.role === 'user' ? '你' : 'AI 数据助手' }}</span>
-          <div class="message-content">{{ message.content }}</div>
-          <template v-if="message.role === 'assistant'">
+          <div v-if="message.type === 'loading'" class="message-content loading-content"><span class="loading-spinner" aria-hidden="true" />{{ message.content }}</div>
+          <div v-else class="message-content">{{ message.content }}</div>
+          <template v-if="message.role === 'assistant' && message.type !== 'loading'">
             <el-tag size="small" effect="plain" :type="message.evidence.answer_mode === 'deepseek' ? 'success' : 'info'">{{ answerModeLabel(message.evidence.answer_mode) }}</el-tag>
             <el-collapse class="evidence"><el-collapse-item title="查看数据依据">
               <dl>
@@ -169,12 +184,11 @@ onMounted(() => { void loadDatasets() })
         </article>
         </div>
       </div>
-      <div v-if="loading" class="thinking">正在分析数据……</div>
       <div class="composer"><el-input v-model="question" type="textarea" :rows="3" maxlength="1000" show-word-limit placeholder="输入你的数据问题，例如：5月份销售额是多少？" :disabled="loading" @keydown="handleKeydown" /><el-button type="primary" :loading="loading" :disabled="!canSend" @click="sendQuestion">发送</el-button></div>
     </el-card>
   </section>
 </template>
 
 <style scoped>
-.data-chat-view { max-width: 1120px; margin: 0 auto; }.chat-header { margin-bottom: 20px; }.chat-header h2 { margin: 6px 0 10px; color: #132d4e; font-size: 30px; }.chat-header p:not(.view-eyebrow) { margin: 0; color: #6b7f99; }.view-eyebrow { margin: 0; color: #2f74e8; font-weight: 700; font-size: 12px; letter-spacing: .1em; }.dataset-card { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }.dataset-card label { color: #173658; font-weight: 700; white-space: nowrap; }.dataset-card :deep(.el-select) { width: min(420px, 100%); }.dataset-hint { color: #71849a; font-size: 13px; }.chat-error { margin-bottom: 16px; }.chat-card { min-height: 560px; }.chat-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; color: #71849a; font-size: 13px; }.chat-empty { display: grid; justify-items: center; min-height: 350px; align-content: center; }.suggestions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 720px; }.message-list { display: grid; gap: 16px; min-height: 350px; }.message-row { display: flex; min-width: 0; }.message-row.user { justify-content: flex-end; }.message-row.assistant { justify-content: flex-start; }.message { display: inline-grid; width: fit-content; min-width: 0; max-width: min(78%, 760px); gap: 7px; height: auto; padding: 14px 16px; border-radius: 12px; overflow-wrap: anywhere; word-break: break-word; }.message.user { background: #2f74e8; color: #fff; }.message.assistant { background: #f3f7fc; border: 1px solid #e1eaf4; color: #193552; }.message-role { font-size: 12px; font-weight: 700; opacity: .8; }.message-content { line-height: 1.7; white-space: pre-wrap; }.evidence { margin-top: 6px; max-width: 100%; }.evidence dl { display: grid; gap: 6px; margin: 0; }.evidence dl div { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 8px; }.evidence dt { color: #71849a; }.evidence dd { margin: 0; color: #294866; }.metric-evidence { display: grid; gap: 5px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #e4ebf3; }.thinking { padding: 14px 0; color: #2f74e8; font-size: 14px; }.composer { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 12px; padding-top: 18px; border-top: 1px solid #e5edf6; } @media (max-width: 700px) { .dataset-card { align-items: flex-start; flex-direction: column; }.dataset-card :deep(.el-select) { width: 100%; }.message { max-width: 92%; }.chat-toolbar { align-items: flex-start; flex-direction: column; }.composer { grid-template-columns: 1fr; }.composer :deep(.el-button) { width: 100%; } }
+.data-chat-view { max-width: 1120px; margin: 0 auto; }.chat-header { margin-bottom: 20px; }.chat-header h2 { margin: 6px 0 10px; color: #132d4e; font-size: 30px; }.chat-header p:not(.view-eyebrow) { margin: 0; color: #6b7f99; }.view-eyebrow { margin: 0; color: #2f74e8; font-weight: 700; font-size: 12px; letter-spacing: .1em; }.dataset-card { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }.dataset-card label { color: #173658; font-weight: 700; white-space: nowrap; }.dataset-card :deep(.el-select) { width: min(420px, 100%); }.dataset-hint { color: #71849a; font-size: 13px; }.chat-error { margin-bottom: 16px; }.chat-card { min-height: 560px; }.chat-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; color: #71849a; font-size: 13px; }.chat-empty { display: grid; justify-items: center; min-height: 350px; align-content: center; }.suggestions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 720px; }.message-list { display: grid; gap: 16px; min-height: 350px; }.message-row { display: flex; min-width: 0; }.message-row.user { justify-content: flex-end; }.message-row.assistant { justify-content: flex-start; }.message { display: inline-grid; width: fit-content; min-width: 0; max-width: min(78%, 760px); gap: 7px; height: auto; padding: 14px 16px; border-radius: 12px; overflow-wrap: anywhere; word-break: break-word; }.message.user { background: #2f74e8; color: #fff; }.message.assistant { background: #f3f7fc; border: 1px solid #e1eaf4; color: #193552; }.message.loading { width: auto; color: #406484; }.message-role { font-size: 12px; font-weight: 700; opacity: .8; }.message-content { line-height: 1.7; white-space: pre-wrap; }.loading-content { display: inline-flex; align-items: center; gap: 8px; }.loading-spinner { width: 14px; height: 14px; border: 2px solid #bfd5f3; border-top-color: #2f74e8; border-radius: 50%; animation: chat-spin .8s linear infinite; } @keyframes chat-spin { to { transform: rotate(360deg); } }.evidence { margin-top: 6px; max-width: 100%; }.evidence dl { display: grid; gap: 6px; margin: 0; }.evidence dl div { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 8px; }.evidence dt { color: #71849a; }.evidence dd { margin: 0; color: #294866; }.metric-evidence { display: grid; gap: 5px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #e4ebf3; }.composer { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 12px; padding-top: 18px; border-top: 1px solid #e5edf6; } @media (max-width: 700px) { .dataset-card { align-items: flex-start; flex-direction: column; }.dataset-card :deep(.el-select) { width: 100%; }.message { max-width: 92%; }.chat-toolbar { align-items: flex-start; flex-direction: column; }.composer { grid-template-columns: 1fr; }.composer :deep(.el-button) { width: 100%; } }
 </style>

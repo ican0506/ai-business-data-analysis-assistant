@@ -18,6 +18,7 @@ const navigationItems = [
   { index: '/datasets', title: '数据集管理', description: '上传与清洗记录' },
   { index: '/ai-analysis', title: 'AI分析报告', description: '智能业务洞察' },
   { index: '/downloads', title: '报告下载中心', description: '导出文件管理' },
+  { index: '/data-chat', title: 'AI 数据问答', description: '自然语言查询业务数据' },
   { index: '/manufacturing/dashboard', title: '生产经营驾驶舱', description: '制造业运营概览' },
   { index: '/manufacturing/equipment', title: '设备管理', description: '状态与异常告警' },
   { index: '/manufacturing/reports', title: '经营报告中心', description: '快照与报告导出' },

@@ -10,6 +10,8 @@
 - Python / Pandas 计算真实指标；AI 只解释已有结构化结果
 - Vue3 动态 Dashboard、字段映射、AI 报告与下载中心
 - DeepSeek 可选接入，调用失败自动降级为规则引擎
+- 制造业生产经营驾驶舱、设备管理、设备诊断和经营报告快照
+- Python 确定性预测：设备风险、能耗趋势、生产达成；AI 仅解释预测结果
 - Docker Compose：MySQL、FastAPI、Nginx/Vue
 
 ## 技术栈
@@ -31,10 +33,14 @@ flowchart TD
 
   F --> J[JWT 认证]
   F --> D[数据集业务]
+  F --> MF[制造业业务]
   F --> O[操作日志 / 审计]
   J --> M[(MySQL)]
   D <--> M
+  MF <--> M
   O --> M
+
+  M --- MT[生产记录、设备记录、能耗记录<br/>经营报告快照、预测运行快照]
 
   D <--> S[(Storage：原始 Excel/CSV 与清洗文件)]
   D --> C[数据清洗与字段映射]
@@ -47,6 +53,15 @@ flowchart TD
   A -->|仅使用已计算的结构化指标| DS[DeepSeek V4 Pro 深度分析]
   A -. 调用失败 .-> RF[规则引擎回退]
   K --> R[报告导出：Excel / Word / PDF]
+
+  MF --> MD[生产驾驶舱 / 设备管理]
+  MF --> ED[设备规则诊断]
+  MF --> BP[经营报告快照]
+  MF --> FP[Python 确定性预测]
+  FP -->|设备风险、能耗趋势、生产达成| PE[预测解释服务]
+  PE -->|仅解释 prediction_result| A
+  FP --> PR[预测运行快照]
+  PE --> PR
 
   A --> X[分析结果]
   RF --> X
@@ -64,6 +79,24 @@ flowchart TD
 | StudentScore | 学生数、成绩概览、学科/班级/学生聚合、考试趋势（字段可用时） |
 | Inventory | 库存概览、低库存、库存价值、分类/仓库/供应商汇总（字段可用时） |
 | Generic | 行数、列画像、缺失值分析；是合法 fallback，不是系统错误 |
+
+### 制造业生产经营模块
+
+| 模块 | 数据来源 | 已实现能力 |
+| --- | --- | --- |
+| 生产经营驾驶舱 | `production_records`、`equipment_records`、`energy_records` | 今日产量、生产达成率、设备运行率、单位能耗、生产/能耗趋势和设备状态图表 |
+| 设备管理 | `equipment_records` | 设备列表、详情、温度/振动历史趋势、基于阈值的异常提示 |
+| AI 设备诊断 | 最新设备运行与异常规则结果 | 风险等级、问题分析、可能原因和处理建议；复用统一 AI 调用与规则降级 |
+| AI 经营报告中心 | 生产、设备、能耗记录及诊断结果 | 生产/设备/能耗确定性指标、AI 总结、报告历史，以及 Excel/Word/PDF 快照导出 |
+| 预测与预警 | 三类制造业历史记录 | 设备故障风险、能耗趋势、生产达成预测、风险统计、趋势图与预测历史 |
+
+#### 制造业预测职责边界
+
+- `EquipmentFailurePredictor` 依据温度、振动、故障次数和设备状态输出确定性设备风险。
+- `EnergyConsumptionPredictor` 使用移动平均和趋势斜率预测单位能耗趋势与预警等级。
+- `ProductionCompletionPredictor` 依据水泥实际产量与计划产量重新计算完成率，并判断生产达成趋势。
+- 所有预测数值、趋势和风险等级均由 Python 产生并保存为 `manufacturing_prediction_runs` 快照；AI 不重算、不覆盖风险等级，也不新增数值、传感器数据或故障记录。
+- `PredictionExplanationService` 仅向统一的 `AIAnalysisService` 提交 `prediction_result`、已确定风险等级与规则原因，返回 AI 总结、风险解释与建议；DeepSeek 不可用时自动回退规则解释。
 
 `null` / `—` 表示不可分析或不适用，**不等于 0**；真实计算值为 `0` 会原样保留。Python / Pandas 是指标真值来源，AI 不计算或编造核心指标。
 
@@ -96,7 +129,9 @@ uvicorn app.main:app --reload
 
 Swagger：<http://127.0.0.1:8000/docs>
 
-首次启动会由 SQLAlchemy `Base.metadata.create_all()` 创建当前模型表。已有 MySQL 数据库可按顺序执行 `backend/sql/001_create_users_table.sql` 至 `backend/sql/005_create_dataset_field_mapping_overrides.sql`；项目未使用 Alembic，`005` 用于字段 override 表。
+首次启动会由 SQLAlchemy `Base.metadata.create_all()` 创建当前模型表。已有 MySQL 数据库可按顺序执行 `backend/sql/001_create_users_table.sql` 至 `backend/sql/009_create_manufacturing_prediction_runs.sql`；项目未使用 Alembic。
+
+其中 `006` 创建制造业生产/设备/能耗表，`007` 写入演示数据，`008` 创建制造业经营报告快照表，`009` 创建制造业预测运行快照表。生产数据库执行 `007` 前请确认需要演示数据。
 
 `STORAGE_ROOT` 对应的上传和清洗目录会由应用运行时创建；运行数据不应提交到 Git。
 
@@ -159,7 +194,11 @@ MySQL 在**首次创建空的 `mysql_data` volume** 时，会按文件名顺序�
 
 ## 使用流程
 
-注册 / 登录 → 上传 CSV/XLSX → 清洗 → 自动映射与领域识别 → 必要时人工 override → 动态 Dashboard → AI 分析 → 导出 Excel/Word/PDF。
+通用数据分析流程：注册 / 登录 → 上传 CSV/XLSX → 清洗 → 自动映射与领域识别 → 必要时人工 override → 动态 Dashboard → AI 分析 → 导出 Excel/Word/PDF。
+
+制造业流程：登录 → 生产经营驾驶舱 → 设备管理与异常诊断 → 生成经营报告快照或预测快照 → 查看 Python 指标/预测趋势 → 查看 AI 解释或规则降级解释。
+
+制造业预测页面入口：<http://127.0.0.1:5173/manufacturing/prediction>。预测详情中的 AI 解释来自已保存快照；历史快照没有解释字段时前端会显示空状态，但预测结果与图表仍可正常查看。
 
 字段 override 使用 `PUT /api/v1/datasets/{id}/field-mapping` 全量替换：
 
@@ -180,7 +219,7 @@ MySQL 在**首次创建空的 `mysql_data` volume** 时，会按文件名顺序�
 
 ## API、CORS 与目录
 
-FastAPI 内置 Swagger，开发环境访问 `/docs`。主要接口类别为认证、数据集、字段映射、指标、AI、报告与审计日志。
+FastAPI 内置 Swagger，开发环境访问 `/docs`。主要接口类别为认证、数据集、字段映射、指标、AI、报告、审计日志，以及制造业生产/设备/诊断/经营报告/预测。
 
 CORS 使用 `CORS_ALLOWED_ORIGINS` 白名单并允许凭据，不使用 `*`。Docker Nginx 将 `/api/` 代理至 FastAPI。Docker 的 `./storage` 挂载到后端 `/storage`，用于上传与清洗结果。
 
@@ -200,7 +239,7 @@ npm run build
 ## 项目目录
 
 ```text
-backend/                 FastAPI、领域服务、SQL 补丁、测试
+backend/                 FastAPI、通用与制造业领域服务、预测器、SQL 补丁、测试
 frontend/vue-app/        Vue 3 前端
 examples/                可直接演示的 CSV
 storage/                 运行数据（忽略实际内容）
@@ -212,6 +251,7 @@ docker-compose.yml       MySQL + Backend + Nginx
 
 - 暂不支持 fuzzy/embedding/LLM 自动字段映射。
 - 暂不支持库存预测、EOQ、ABC 分类、学生 GPA、自动业务规则推断或更多领域。
+- 制造业预测采用可解释的移动平均、简单趋势和阈值规则，不包含在线训练、深度学习或复杂机器学习模型。
 - AI 不重算指标；外部模型失败时返回规则解释。
 - Compose 适合单机演示；真实生产仍需 HTTPS、备份、日志轮转和专用密钥管理。
 

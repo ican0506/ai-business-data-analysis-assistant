@@ -172,10 +172,18 @@ class RuleBasedQuestionInterpreter:
                 matched[field] = candidates[0]
 
         region_hint = re.search(r"(?P<value>[\u4e00-\u9fffA-Za-z0-9_-]+)(?:地区|区域)", text)
-        if region_hint and "region" not in matched:
+        if (
+            region_hint
+            and "region" not in matched
+            and region_hint.group("value") not in {"哪个", "什么", "哪里", "最高的", "销售额最高的"}
+        ):
             return None
         category_hint = re.search(r"(?P<value>[\u4e00-\u9fffA-Za-z0-9_-]+)(?:品类|分类)", text)
-        if category_hint and "category" not in matched:
+        if (
+            category_hint
+            and "category" not in matched
+            and category_hint.group("value") not in {"哪个", "什么", "最高的", "销售额最高的"}
+        ):
             return None
         return DataChatFilters(**matched)
 
@@ -183,13 +191,18 @@ class RuleBasedQuestionInterpreter:
     def _grouping(
         text: str, metrics: list[DataChatMetric]
     ) -> tuple[list[DataChatGroupBy], DataChatSort | None, int | None]:
-        dimension_map = {"商品": DataChatGroupBy.PRODUCT, "品类": DataChatGroupBy.CATEGORY, "分类": DataChatGroupBy.CATEGORY, "地区": DataChatGroupBy.REGION, "区域": DataChatGroupBy.REGION}
-        top = re.search(r"(?:最高|Top|TOP).*?(?P<limit>\d+)个?(?P<dimension>商品|品类|分类|地区|区域)|(?P<dimension_after>商品|品类|分类|地区|区域).*?(?:最高|Top|TOP).*?(?P<limit_after>\d+)", text)
+        dimension_map = {"商品": DataChatGroupBy.PRODUCT, "产品": DataChatGroupBy.PRODUCT, "品类": DataChatGroupBy.CATEGORY, "类别": DataChatGroupBy.CATEGORY, "分类": DataChatGroupBy.CATEGORY, "地区": DataChatGroupBy.REGION, "区域": DataChatGroupBy.REGION}
+        top = re.search(r"(?:最高|Top|TOP).*?(?P<limit>\d+)个?(?P<dimension>商品|产品|品类|类别|分类|地区|区域)|(?P<dimension_after>商品|产品|品类|类别|分类|地区|区域).*?(?:最高|Top|TOP).*?(?P<limit_after>\d+)", text)
         if top:
             dimension = top.group("dimension") or top.group("dimension_after")
             limit = int(top.group("limit") or top.group("limit_after"))
             sort_metric = DataChatMetric.SALES_QUANTITY if DataChatMetric.SALES_QUANTITY in metrics else DataChatMetric.SALES_AMOUNT
             return [dimension_map[dimension]], DataChatSort(metric=sort_metric, direction=DataChatSortDirection.DESC), limit
+        if "最高" in text:
+            dimension = next((label for label in dimension_map if label in text), None)
+            if dimension is not None:
+                sort_metric = DataChatMetric.SALES_QUANTITY if DataChatMetric.SALES_QUANTITY in metrics else DataChatMetric.SALES_AMOUNT
+                return [dimension_map[dimension]], DataChatSort(metric=sort_metric, direction=DataChatSortDirection.DESC), 1
         if re.search(r"每月|每个月|月度.*趋势|销售趋势|趋势", text):
             return [DataChatGroupBy.MONTH], None, None
         return [], None, None

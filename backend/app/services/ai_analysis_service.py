@@ -1,5 +1,11 @@
 import json
 import logging
+<<<<<<< Updated upstream
+=======
+import re
+import threading
+from time import perf_counter
+>>>>>>> Stashed changes
 
 from app.core.config import get_settings
 from app.models.dataset import Dataset
@@ -12,22 +18,49 @@ logger = logging.getLogger(__name__)
 LLM_ENABLED_PROVIDERS = frozenset({"deepseek", "openrouter"})
 
 
+class LLMHardTimeoutError(TimeoutError):
+    """Raised when a synchronous provider call exceeds the analysis deadline."""
+
+
 class AIAnalysisService:
     def __init__(self) -> None:
         self.metrics_service = MetricsService()
 
     def generate_report(self, db, dataset: Dataset) -> dict:
+        started_at = perf_counter()
+        dataset_id = getattr(dataset, "id", None)
+        logger.info("ai_analysis_started dataset_id=%s elapsed_ms=0", dataset_id)
         metrics = self.metrics_service.build_metrics(db, dataset)
-        return {**self.analyze_metrics(metrics), "metrics": metrics}
+        logger.info(
+            "metrics_ready dataset_id=%s elapsed_ms=%s",
+            dataset_id,
+            self._elapsed_ms(started_at),
+        )
+        result = {**self.analyze_metrics(metrics, started_at=started_at), "metrics": metrics}
+        logger.info(
+            "response_ready dataset_id=%s elapsed_ms=%s",
+            dataset_id,
+            self._elapsed_ms(started_at),
+        )
+        return result
 
-    def analyze_metrics(self, metrics: dict) -> dict:
+    def analyze_metrics(self, metrics: dict, *, started_at: float | None = None) -> dict:
         """Convert calculated metrics into a capability-aware business insight."""
+        started_at = started_at or perf_counter()
         analysis_context = self.build_analysis_context(metrics)
+        logger.info("fallback_started purpose=prepare elapsed_ms=%s", self._elapsed_ms(started_at))
         fallback = self._build_rule_report(metrics, analysis_context)
+        logger.info("fallback_finished purpose=prepare elapsed_ms=%s", self._elapsed_ms(started_at))
         settings = get_settings()
         if AIAnalysisService.is_llm_enabled(settings):
-            return self._generate_with_deepseek(metrics, analysis_context, fallback)
+            return self._generate_with_deepseek(
+                metrics, analysis_context, fallback, started_at=started_at
+            )
         return fallback
+
+    @staticmethod
+    def _elapsed_ms(started_at: float) -> int:
+        return round((perf_counter() - started_at) * 1000)
 
     @staticmethod
     def is_llm_enabled(settings=None) -> bool:
@@ -532,8 +565,15 @@ class AIAnalysisService:
         }
 
     @staticmethod
-    def _generate_with_deepseek(metrics: dict, analysis_context: dict, fallback: dict) -> dict:
+    def _generate_with_deepseek(
+        metrics: dict,
+        analysis_context: dict,
+        fallback: dict,
+        *,
+        started_at: float | None = None,
+    ) -> dict:
         settings = get_settings()
+        started_at = started_at or perf_counter()
         selected_module = (analysis_context.get("selected_module") or {"id": "order"}).get("id")
         student_constraints = (
             "当前是学生成绩数据：只能使用 student_score_analysis；不得重新计算原始成绩；"
@@ -568,16 +608,86 @@ class AIAnalysisService:
             f"真实指标：{AIAnalysisService._deepseek_metrics_payload(metrics, analysis_context)}"
         )
         try:
+<<<<<<< Updated upstream
             generated = AIAnalysisService._request_llm_json(prompt)
             return {**fallback, **generated, "mode": settings.llm_provider}
+=======
+            logger.info(
+                "llm_started provider=%s model=%s elapsed_ms=%s",
+                settings.llm_provider,
+                settings.llm_model,
+                AIAnalysisService._elapsed_ms(started_at),
+            )
+            generated = AIAnalysisService._request_llm_json_with_hard_timeout(
+                prompt, settings.llm_timeout_seconds
+            )
+            logger.info(
+                "llm_finished provider=%s model=%s elapsed_ms=%s",
+                settings.llm_provider,
+                settings.llm_model,
+                AIAnalysisService._elapsed_ms(started_at),
+            )
+            return AIAnalysisService._normalize_generated_report(
+                fallback, generated, settings.llm_provider
+            )
+        except LLMHardTimeoutError:
+            logger.warning(
+                "llm_timeout provider=%s model=%s elapsed_ms=%s",
+                settings.llm_provider,
+                settings.llm_model,
+                AIAnalysisService._elapsed_ms(started_at),
+            )
+            return AIAnalysisService._return_fallback(fallback, started_at)
+>>>>>>> Stashed changes
         except Exception as error:
             logger.warning(
-                "LLM analysis failed; using rule-based fallback provider=%s model=%s error_type=%s",
+                "llm_failed provider=%s model=%s error_type=%s elapsed_ms=%s",
                 settings.llm_provider,
                 settings.llm_model,
                 type(error).__name__,
+                AIAnalysisService._elapsed_ms(started_at),
             )
-            return fallback
+            return AIAnalysisService._return_fallback(fallback, started_at)
+
+    @staticmethod
+    def _return_fallback(fallback: dict, started_at: float) -> dict:
+        """Return the already-built deterministic report without new computation."""
+        logger.info("fallback_started purpose=use_prebuilt elapsed_ms=%s", AIAnalysisService._elapsed_ms(started_at))
+        logger.info("fallback_finished purpose=use_prebuilt elapsed_ms=%s", AIAnalysisService._elapsed_ms(started_at))
+        return fallback
+
+    @staticmethod
+    def _request_llm_json_with_hard_timeout(prompt: str, timeout_seconds: float) -> dict:
+        """Bound total wait time around the synchronous OpenAI-compatible client.
+
+        The SDK's HTTP timeout is per transport operation.  The daemon worker lets
+        the request thread return a deterministic fallback even if a provider stalls.
+        """
+        completed = threading.Event()
+        outcome: dict[str, object] = {}
+
+        def request_llm() -> None:
+            try:
+                outcome["result"] = AIAnalysisService._request_llm_json(prompt)
+            except BaseException as error:  # Forward provider errors to the caller thread.
+                outcome["error"] = error
+            finally:
+                completed.set()
+
+        worker = threading.Thread(
+            target=request_llm,
+            name="ai-analysis-llm",
+            daemon=True,
+        )
+        worker.start()
+        if not completed.wait(timeout=max(float(timeout_seconds), 0.001)):
+            raise LLMHardTimeoutError("LLM request exceeded the configured deadline")
+        if error := outcome.get("error"):
+            raise error
+        result = outcome.get("result")
+        if not isinstance(result, dict):
+            raise ValueError("LLM returned an invalid JSON object")
+        return result
 
     @staticmethod
     def _request_llm_json(prompt: str) -> dict:

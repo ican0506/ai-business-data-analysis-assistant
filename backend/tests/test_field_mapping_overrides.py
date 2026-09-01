@@ -142,6 +142,31 @@ def test_put_mapping_persists_order_override_and_keeps_derived_sales(client: Tes
     assert metrics.json()["data"]["sales_amount"]["total"] == 80.0
 
 
+def test_get_mapping_returns_all_cleaned_order_source_columns(client: TestClient) -> None:
+    headers = auth_headers(client)
+    dataset_id = upload_and_clean(
+        client,
+        headers,
+        "order_id,order_date,product_name,category,region,unit_price,quantity,discount,order_amount\n"
+        "O001,2026-09-01,键盘,数码,华东,100,2,0.9,180\n",
+        "complete-orders.csv",
+    )
+
+    response = client.get(f"/api/v1/datasets/{dataset_id}/field-mapping", headers=headers)
+
+    assert response.status_code == 200
+    fields = response.json()["data"]["field_mapping"]["fields"]
+    assert [item["source"] for item in fields] == [
+        "order_id", "order_date", "product_name", "category", "region",
+        "unit_price", "quantity", "discount", "order_amount",
+    ]
+    assert {item["source"]: item["target"] for item in fields} == {
+        "order_id": "order_id", "order_date": "date", "product_name": "product",
+        "category": "category", "region": "region", "unit_price": "unit_price",
+        "quantity": "quantity", "discount": "discount", "order_amount": "sales_amount",
+    }
+
+
 def test_put_mapping_persists_inventory_override_and_metrics_uses_it(client: TestClient) -> None:
     headers = auth_headers(client)
     dataset_id = upload_and_clean(

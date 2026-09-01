@@ -288,6 +288,11 @@ def test_unknown_chinese_columns_remain_generic_and_are_reported_as_unmapped() -
         "mappings": [],
         "unmapped_columns": ["地点标签", "温度", "备注"],
         "conflicts": [],
+        "fields": [
+            {"source": "地点标签", "target": None, "method": "unmapped"},
+            {"source": "温度", "target": None, "method": "unmapped"},
+            {"source": "备注", "target": None, "method": "unmapped"},
+        ],
     }
 
 

@@ -8,7 +8,7 @@ import pandas as pd
 
 ORDER_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     "order_id": ("订单编号", "订单号", "order id", "order_id", "orderid"),
-    "product": ("商品", "商品名称", "产品", "产品名称", "product"),
+    "product": ("商品", "商品名称", "产品", "产品名称", "product", "product name", "product_name"),
     "quantity": ("数量", "商品数量", "件数", "quantity"),
     "unit_price": ("单价", "商品单价", "unit price", "unit_price"),
     "sales_amount": ("销售额", "销售金额", "订单金额", "成交金额", "订单实付金额", "order amount", "order_amount", "sales amount", "sales_amount", "sales"),
@@ -19,7 +19,7 @@ ORDER_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     "category": ("商品类别", "商品品类", "订单品类", "分类", "商品分类", "产品分类", "品类", "category"),
     "region": ("区域", "地区", "大区", "城市", "city", "region"),
     "status": ("状态", "订单状态", "order status", "order_status", "status"),
-    "date": ("日期", "订单日期", "交易日期", "下单时间", "订单时间", "order time", "order_time", "date"),
+    "date": ("日期", "订单日期", "交易日期", "下单时间", "订单时间", "order date", "order_date", "order time", "order_time", "date"),
     "discount": ("折扣", "折扣率", "discount"),
     "payment_method": ("支付方式", "付款方式", "支付渠道", "payment method", "payment_method"),
     "gender": ("性别", "gender"),
@@ -68,7 +68,7 @@ class CanonicalFieldMapper:
         self,
         frame: pd.DataFrame,
         overrides: Mapping[str, str] | None = None,
-    ) -> tuple[pd.DataFrame, dict[str, list[object]]]:
+    ) -> tuple[pd.DataFrame, dict[str, object]]:
         """Return a renamed copy and JSON-serializable mapping metadata."""
         source_columns = [str(column) for column in frame.columns]
         normalized_overrides = dict(overrides or {})
@@ -128,10 +128,32 @@ class CanonicalFieldMapper:
 
         mapped = frame.copy()
         mapped.columns = [rename_by_source.get(str(column), column) for column in frame.columns]
+        mapping_by_source = {item["source"]: item for item in mappings}
+        conflict_sources = {
+            source
+            for conflict in conflicts
+            for source in conflict["sources"]
+        }
+        unmapped_columns = [
+            source for source in source_columns if source not in recognized_columns
+        ]
+        fields = []
+        for source in source_columns:
+            mapping = mapping_by_source.get(source)
+            if mapping is not None:
+                fields.append(dict(mapping))
+            elif source in canonical_columns:
+                fields.append({"source": source, "target": source, "method": "canonical"})
+            elif source in conflict_sources:
+                fields.append({"source": source, "target": None, "method": "conflict"})
+            else:
+                fields.append({"source": source, "target": None, "method": "unmapped"})
+
         return mapped, {
             "mappings": mappings,
-            "unmapped_columns": [source for source in source_columns if source not in recognized_columns],
+            "unmapped_columns": unmapped_columns,
             "conflicts": conflicts,
+            "fields": fields,
         }
 
     def validate_overrides(self, frame: pd.DataFrame, overrides: Mapping[str, str]) -> None:
@@ -155,18 +177,23 @@ class CanonicalFieldMapper:
     def _build_alias_index(self) -> dict[str, str]:
         aliases: dict[str, str] = {}
         for target in self._ordered_targets():
-            aliases[self._normalize_header(target)] = target
+            self._register_alias(aliases, self._normalize_header(target), target)
             for alias in self._all_aliases()[target]:
-                normalized = self._normalize_header(alias)
-                existing = aliases.get(normalized)
-                if existing is not None and existing != target:
-                    self._ambiguous_aliases[normalized] = tuple(
-                        dict.fromkeys((*self._ambiguous_aliases.get(normalized, (existing,)), target))
-                    )
-                    aliases.pop(normalized, None)
-                    continue
-                aliases[normalized] = target
+                self._register_alias(aliases, self._normalize_header(alias), target)
         return aliases
+
+    def _register_alias(self, aliases: dict[str, str], normalized: str, target: str) -> None:
+        ambiguous_targets = self._ambiguous_aliases.get(normalized)
+        if ambiguous_targets is not None:
+            if target not in ambiguous_targets:
+                self._ambiguous_aliases[normalized] = (*ambiguous_targets, target)
+            return
+        existing = aliases.get(normalized)
+        if existing is not None and existing != target:
+            self._ambiguous_aliases[normalized] = (existing, target)
+            aliases.pop(normalized, None)
+            return
+        aliases[normalized] = target
 
     @classmethod
     def _all_aliases(cls) -> dict[str, tuple[str, ...]]:
@@ -191,6 +218,10 @@ class CanonicalFieldMapper:
             static_targets.intersection({"order_id", "quantity", "unit_price", "sales_amount", "customer_id", "region", "status", "date", "target_amount"})
         )
         if has_inventory_context and not has_order_context and "product_name" in candidates:
+            return "product_name"
+        if has_order_context and "product" in candidates:
+            return "product"
+        if normalized == self._normalize_header("product_name") and "product_name" in candidates:
             return "product_name"
         if "product" in candidates:
             return "product"

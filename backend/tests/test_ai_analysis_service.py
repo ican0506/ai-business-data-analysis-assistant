@@ -328,6 +328,16 @@ def test_student_score_fallback_does_not_invent_missing_class_or_trend() -> None
 
 def test_student_score_deepseek_payload_excludes_order_metrics(monkeypatch) -> None:
     captured: dict[str, str] = {}
+    monkeypatch.setattr(
+        "app.services.ai_analysis_service.get_settings",
+        lambda: SimpleNamespace(
+            llm_provider="deepseek",
+            llm_api_key="test-key",
+            llm_base_url="https://api.deepseek.com",
+            llm_model="deepseek-chat",
+            llm_timeout_seconds=25,
+        ),
+    )
 
     class SuccessfulCompletions:
         def create(self, **kwargs):
@@ -453,6 +463,16 @@ def test_inventory_fallback_uses_only_real_inventory_metrics() -> None:
 
 def test_inventory_deepseek_payload_and_prompt_exclude_order_metrics(monkeypatch) -> None:
     captured: dict[str, str] = {}
+    monkeypatch.setattr(
+        "app.services.ai_analysis_service.get_settings",
+        lambda: SimpleNamespace(
+            llm_provider="deepseek",
+            llm_api_key="test-key",
+            llm_base_url="https://api.deepseek.com",
+            llm_model="deepseek-chat",
+            llm_timeout_seconds=25,
+        ),
+    )
 
     class SuccessfulCompletions:
         def create(self, **kwargs):

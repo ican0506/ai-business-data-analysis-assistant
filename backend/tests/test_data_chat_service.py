@@ -7,10 +7,25 @@ import pytest
 
 from app.schemas.data_chat import DataChatMetric, DataChatQueryPlan
 from app.services.data_chat.data_chat_service import DataChatService, DataChatServiceError
+from app.services.data_chat.question_interpreter import QueryPlanParseError
 
 
 class _RuleInterpreter:
     def interpret(self, _question: str, _frame: pd.DataFrame, **_kwargs: object) -> DataChatQueryPlan:
+        return DataChatQueryPlan(metrics=[DataChatMetric.SALES_AMOUNT])
+
+
+class _NoMatchRuleInterpreter:
+    def interpret(self, _question: str, _frame: pd.DataFrame, **_kwargs: object) -> None:
+        return None
+
+
+class _LLMInterpreter:
+    def __init__(self) -> None:
+        self.called = False
+
+    def interpret(self, _question: str) -> DataChatQueryPlan:
+        self.called = True
         return DataChatQueryPlan(metrics=[DataChatMetric.SALES_AMOUNT])
 
 
@@ -98,3 +113,74 @@ def test_service_turns_an_invalid_persisted_field_override_into_a_business_error
         )
 
     assert error.value.status_code == 400
+
+
+@pytest.mark.parametrize("provider", ["deepseek", "openrouter"])
+def test_service_uses_llm_fallback_for_each_enabled_provider(monkeypatch, provider: str) -> None:
+    llm_interpreter = _LLMInterpreter()
+    service = DataChatService(
+        rule_interpreter=_NoMatchRuleInterpreter(),
+        llm_interpreter=llm_interpreter,
+    )
+    monkeypatch.setattr(
+        "app.services.data_chat.data_chat_service.get_settings",
+        lambda: SimpleNamespace(llm_provider=provider, llm_api_key="configured"),
+    )
+
+    plan, mode = service._resolve_plan("哪个地区销售额最高？", pd.DataFrame(), {})
+
+    assert llm_interpreter.called is True
+    assert mode == "llm"
+    assert plan.metrics == [DataChatMetric.SALES_AMOUNT]
+
+
+def test_service_does_not_call_llm_when_rule_based_provider_cannot_match(monkeypatch) -> None:
+    llm_interpreter = _LLMInterpreter()
+    service = DataChatService(
+        rule_interpreter=_NoMatchRuleInterpreter(),
+        llm_interpreter=llm_interpreter,
+    )
+    monkeypatch.setattr(
+        "app.services.data_chat.data_chat_service.get_settings",
+        lambda: SimpleNamespace(llm_provider="rule_based", llm_api_key="configured"),
+    )
+
+    with pytest.raises(QueryPlanParseError, match="当前暂不支持"):
+        service._resolve_plan("哪个地区销售额最高？", pd.DataFrame(), {})
+
+    assert llm_interpreter.called is False
+
+
+def test_openrouter_query_plan_is_executed_by_metric_engine(monkeypatch) -> None:
+    dataset = SimpleNamespace(id=3, owner_id=7, original_filename="orders.csv")
+    llm_interpreter = _LLMInterpreter()
+    engine = _MetricEngine()
+    service = DataChatService(
+        metrics_service=SimpleNamespace(
+            load_cleaned_frame=lambda _db, _dataset: pd.DataFrame(
+                {"order_id": ["O-1"], "source_price": [10], "quantity": [2]}
+            )
+        ),
+        field_mapping_service=SimpleNamespace(
+            get_overrides=lambda _db, _dataset_id: {"source_price": "unit_price"}
+        ),
+        rule_interpreter=_NoMatchRuleInterpreter(),
+        llm_interpreter=llm_interpreter,
+        metric_query_engine=engine,
+        answer_generator=_AnswerGenerator(),
+    )
+    monkeypatch.setattr(
+        "app.services.data_chat.data_chat_service.get_settings",
+        lambda: SimpleNamespace(llm_provider="openrouter", llm_api_key="configured"),
+    )
+
+    result = service.query(
+        SimpleNamespace(get=lambda _model, _id: dataset),
+        SimpleNamespace(id=7),
+        dataset_id=3,
+        question="那个地区销售额最高？",
+    )
+
+    assert llm_interpreter.called is True
+    assert result["interpreter_mode"] == "llm"
+    assert engine.received_overrides == {"source_price": "unit_price"}

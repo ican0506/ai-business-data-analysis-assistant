@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pandas as pd
 import pytest
 
@@ -99,3 +101,37 @@ def test_llm_interpreter_turns_provider_failures_into_safe_parse_errors() -> Non
 
     with pytest.raises(QueryPlanParseError):
         interpreter.interpret("帮我分析一下未来走势")
+
+
+def test_llm_interpreter_labels_invalid_json_as_a_reliable_parse_failure() -> None:
+    def invalid_json(_prompt: str) -> dict:
+        raise json.JSONDecodeError("Expecting value", "", 0)
+
+    with pytest.raises(QueryPlanParseError, match="AI 未能可靠理解当前问题"):
+        LLMQuestionInterpreter(request_json=invalid_json).interpret("哪个地区销售额最高？")
+
+
+def test_llm_interpreter_preserves_rate_limit_as_a_distinct_safe_error() -> None:
+    error = RuntimeError("rate limited")
+    error.status_code = 429
+
+    def rate_limited(_prompt: str) -> dict:
+        raise error
+
+    with pytest.raises(QueryPlanParseError, match="请求频率") as caught:
+        LLMQuestionInterpreter(request_json=rate_limited).interpret("哪个地区销售额最高？")
+
+    assert caught.value.status_code == 429
+
+
+def test_llm_interpreter_prompt_requires_the_exact_safe_sort_shape() -> None:
+    captured: list[str] = []
+
+    def valid_plan(prompt: str) -> dict:
+        captured.append(prompt)
+        return {"domain": "order", "metrics": ["sales_amount"]}
+
+    LLMQuestionInterpreter(request_json=valid_plan).interpret("哪个地区销售额最高？")
+
+    assert '"sort":{"metric":"sales_amount","direction":"desc"}' in captured[0]
+    assert "sort 绝不能是数组" in captured[0]

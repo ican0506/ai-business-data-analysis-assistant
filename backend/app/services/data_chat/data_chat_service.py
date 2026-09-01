@@ -6,6 +6,7 @@ from app.core.config import get_settings
 from app.models.dataset import Dataset
 from app.schemas.data_chat import DataChatQueryPlan
 from app.services.analysis_engine import AnalysisEngine
+from app.services.ai_analysis_service import AIAnalysisService
 from app.services.field_mapping_override_service import FieldMappingOverrideService
 from app.services.metrics_service import MetricsService
 from app.services.data_chat.metric_query_engine import MetricQueryEngine
@@ -70,7 +71,7 @@ class DataChatService:
         except QuestionClarificationRequired as error:
             raise DataChatServiceError(400, str(error)) from error
         except QueryPlanParseError as error:
-            raise DataChatServiceError(400, str(error)) from error
+            raise DataChatServiceError(error.status_code, str(error)) from error
 
         result = self._metric_query_engine.query(frame, plan, field_overrides=overrides)
         query_plan_payload = plan.model_dump(mode="json")
@@ -96,6 +97,6 @@ class DataChatService:
         if plan is not None:
             return plan, "rule"
         settings = get_settings()
-        if settings.llm_provider != "deepseek" or not settings.llm_api_key:
+        if not AIAnalysisService.is_llm_enabled(settings):
             raise QueryPlanParseError("当前暂不支持该类型的数据查询。")
         return self._llm_interpreter.interpret(question), "llm"

@@ -133,7 +133,7 @@ function formatDateRange(range) {
 }
 
 function interpreterLabel(mode) { return mode === 'llm' ? 'AI 解析' : '规则解析' }
-function answerModeLabel(mode) { return mode === 'deepseek' ? 'AI 解释' : '规则回答' }
+function answerModeLabel(mode) { return mode === 'rule_based' ? '规则回答' : 'AI 解释' }
 
 onMounted(() => { void loadDatasets() })
 </script>
@@ -167,7 +167,7 @@ onMounted(() => { void loadDatasets() })
           <div v-if="message.type === 'loading'" class="message-content loading-content"><span class="loading-spinner" aria-hidden="true" />{{ message.content }}</div>
           <div v-else class="message-content">{{ message.content }}</div>
           <template v-if="message.role === 'assistant' && message.type !== 'loading'">
-            <el-tag size="small" effect="plain" :type="message.evidence.answer_mode === 'deepseek' ? 'success' : 'info'">{{ answerModeLabel(message.evidence.answer_mode) }}</el-tag>
+            <el-tag size="small" effect="plain" :type="message.evidence.answer_mode !== 'rule_based' ? 'success' : 'info'">{{ answerModeLabel(message.evidence.answer_mode) }}</el-tag>
             <el-collapse class="evidence"><el-collapse-item title="查看数据依据">
               <dl>
                 <div><dt>数据集</dt><dd>{{ message.evidence.dataset?.original_filename }}</dd></div>

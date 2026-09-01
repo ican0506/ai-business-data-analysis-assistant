@@ -45,15 +45,20 @@ async function loadDatasets() {
 onMounted(() => { void loadDatasets() })
 
 async function runAnalysis() {
-  if (!selectedDataset.value) return
+  if (!selectedDataset.value || analyzing.value) return
+  const datasetId = selectedDataset.value.id
   analyzing.value = true
   errorMessage.value = ''
   try {
-    const result = await analyzeDataset(selectedDataset.value.id)
-    cachedResult.value = saveAnalysisResult(auth.user?.id, selectedDataset.value.id, result)
-    ElMessage.success('AI 分析报告已生成。')
+    const result = await analyzeDataset(datasetId)
+    if (selectedDataset.value?.id === datasetId) {
+      cachedResult.value = saveAnalysisResult(auth.user?.id, datasetId, result)
+      ElMessage.success(result.mode === 'rule_based' ? 'AI 服务响应较慢，已使用规则分析。' : 'AI 分析报告已生成。')
+    }
   } catch (error) {
-    errorMessage.value = error.message || 'AI 分析失败，请检查数据集状态后重试。'
+    if (selectedDataset.value?.id === datasetId) {
+      errorMessage.value = error.message || 'AI 分析失败，请检查数据集状态后重试。'
+    }
   } finally {
     analyzing.value = false
   }
@@ -64,7 +69,7 @@ async function runAnalysis() {
   <section class="ai-analysis-view">
     <header class="analysis-intro">
       <div><p class="view-eyebrow">AI INSIGHTS</p><h2>AI 分析报告</h2><p>基于真实数据集生成业务摘要、风险研判与可执行的优化建议。</p></div>
-      <el-button type="primary" :loading="analyzing" :disabled="!selectedDataset" @click="runAnalysis">{{ report ? '重新分析' : '开始 AI 分析' }}</el-button>
+      <el-button type="primary" :loading="analyzing" :disabled="analyzing || !selectedDataset" @click="runAnalysis">{{ report ? '重新分析' : '开始 AI 分析' }}</el-button>
     </header>
 
     <el-card class="dataset-context-card" shadow="never">

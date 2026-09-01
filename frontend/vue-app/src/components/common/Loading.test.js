@@ -2,7 +2,7 @@ import { createApp, nextTick, reactive } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia } from 'pinia'
 
-const route = reactive({ meta: { public: true } })
+const route = reactive({ meta: { public: true }, name: 'login' })
 
 vi.mock('vue-router', () => ({
   useRoute: () => route,
@@ -35,7 +35,11 @@ function mount(component) {
 }
 
 describe('公共 Loading 组件', () => {
-  beforeEach(() => resetRequests())
+  beforeEach(() => {
+    resetRequests()
+    route.meta = { public: true }
+    route.name = 'login'
+  })
   afterEach(() => document.body.replaceChildren())
 
   it('可以只渲染一个 spinner，不递归渲染自身', () => {
@@ -55,6 +59,17 @@ describe('公共 Loading 组件', () => {
 
     endRequest()
     await nextTick()
+    expect(host.querySelector('[role="status"]')).toBeNull()
+  })
+
+  it('AI 分析页面请求时不渲染全屏 Loading', async () => {
+    route.meta = { public: false }
+    route.name = 'ai-analysis'
+    const host = mount(App)
+
+    beginRequest()
+    await nextTick()
+
     expect(host.querySelector('[role="status"]')).toBeNull()
   })
 })

@@ -411,6 +411,76 @@ def test_deepseek_timeout_uses_configured_client_timeout_without_retries(monkeyp
     assert result is fallback
 
 
+def test_openrouter_timeout_uses_rule_based_fallback_with_configured_timeout(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class TimeoutCompletions:
+        def create(self, **kwargs):
+            captured["request"] = kwargs
+            raise TimeoutError("LLM timed out")
+
+    def create_client(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(chat=SimpleNamespace(completions=TimeoutCompletions()))
+
+    monkeypatch.setattr(
+        "app.services.ai_analysis_service.get_settings",
+        lambda: SimpleNamespace(
+            llm_provider="openrouter",
+            llm_api_key="test-key",
+            llm_base_url="https://openrouter.ai/api/v1",
+            llm_model="openrouter/free",
+            llm_timeout_seconds=25,
+        ),
+    )
+    monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(OpenAI=create_client))
+    fallback = {"mode": "rule_based", "summary": "安全回退"}
+
+    result = AIAnalysisService._generate_with_deepseek(
+        {"total_rows": 0},
+        {"supported_analyses": {}, "skipped_analyses": []},
+        fallback,
+    )
+
+    assert captured["timeout"] == 25
+    assert captured["max_retries"] == 0
+    assert "reasoning_effort" not in captured["request"]
+    assert result is fallback
+
+
+def test_openrouter_rate_limit_uses_rule_based_fallback(monkeypatch) -> None:
+    class RateLimitedCompletions:
+        def create(self, **_kwargs):
+            error = RuntimeError("rate limited")
+            error.status_code = 429
+            raise error
+
+    monkeypatch.setattr(
+        "app.services.ai_analysis_service.get_settings",
+        lambda: SimpleNamespace(
+            llm_provider="openrouter",
+            llm_api_key="test-key",
+            llm_base_url="https://openrouter.ai/api/v1",
+            llm_model="openrouter/free",
+            llm_timeout_seconds=25,
+        ),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "openai",
+        SimpleNamespace(OpenAI=lambda **_kwargs: SimpleNamespace(chat=SimpleNamespace(completions=RateLimitedCompletions()))),
+    )
+    fallback = {"mode": "rule_based", "summary": "安全回退"}
+
+    result = AIAnalysisService._generate_with_deepseek(
+        {"total_rows": 0},
+        {"supported_analyses": {}, "skipped_analyses": []},
+        fallback,
+    )
+
+    assert result is fallback
+
+
 def test_deepseek_request_enables_max_reasoning_without_temperature(monkeypatch) -> None:
     captured: dict[str, object] = {}
 

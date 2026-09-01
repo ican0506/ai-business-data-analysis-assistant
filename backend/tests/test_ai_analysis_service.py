@@ -1,5 +1,9 @@
+import logging
 import sys
+import threading
+import time
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 from app.services.ai_analysis_service import AIAnalysisService
 
@@ -591,6 +595,98 @@ def test_llm_report_normalizes_string_list_fields_to_stable_schema(monkeypatch) 
     assert result["business_problems"] == ["规则问题"]
     assert result["recommendations"] == ["优化库存", "调整促销"]
     assert all(isinstance(item, str) for item in result["recommendations"])
+
+
+def test_llm_hard_timeout_returns_prebuilt_rule_fallback_without_recomputing(monkeypatch, caplog) -> None:
+    caplog.set_level(logging.INFO, logger="app.services.ai_analysis_service")
+    release_request = threading.Event()
+    call_count = 0
+
+    def never_returning_request(_prompt: str) -> dict:
+        nonlocal call_count
+        call_count += 1
+        release_request.wait(timeout=1)
+        return {"summary": "不应被等待的结果"}
+
+    monkeypatch.setattr(
+        "app.services.ai_analysis_service.get_settings",
+        lambda: SimpleNamespace(
+            llm_provider="openrouter",
+            llm_api_key="test-key",
+            llm_base_url="https://openrouter.ai/api/v1",
+            llm_model="openrouter/free",
+            llm_timeout_seconds=0.01,
+        ),
+    )
+    monkeypatch.setattr(
+        AIAnalysisService,
+        "_request_llm_json",
+        staticmethod(never_returning_request),
+    )
+    fallback = {
+        "mode": "rule_based",
+        "summary": "已计算的规则摘要",
+        "anomalies": ["规则异常"],
+        "business_problems": ["规则问题"],
+        "recommendations": ["规则建议"],
+        "report": "规则报告",
+    }
+
+    started_at = time.perf_counter()
+    result = AIAnalysisService._generate_with_deepseek(
+        {"total_rows": 0},
+        {"supported_analyses": {}, "skipped_analyses": []},
+        fallback,
+    )
+    elapsed = time.perf_counter() - started_at
+    release_request.set()
+
+    assert result is fallback
+    assert call_count == 1
+    assert elapsed < 0.2
+    assert "llm_started" in caplog.text
+    assert "llm_timeout" in caplog.text
+    assert "fallback_finished purpose=use_prebuilt" in caplog.text
+
+
+def test_generate_report_builds_metrics_once_when_llm_falls_back(monkeypatch) -> None:
+    metrics = {
+        "total_rows": 1,
+        "sales_amount": {"total": 1, "average": 1},
+        "completion_rate": None,
+        "growth_rate": None,
+        "top_regions": [],
+        "region_performance": [],
+        "sales_volatility": None,
+        "order_count": 1,
+        "product_quantity": [],
+        "analysis_plan": analysis_plan("order_count", "sales_total"),
+        "available_fields": ["order_id", "sales_amount"],
+    }
+    service = AIAnalysisService()
+    build_metrics = Mock(return_value=metrics)
+    service.metrics_service.build_metrics = build_metrics
+    monkeypatch.setattr(
+        "app.services.ai_analysis_service.get_settings",
+        lambda: SimpleNamespace(
+            llm_provider="openrouter",
+            llm_api_key="test-key",
+            llm_base_url="https://openrouter.ai/api/v1",
+            llm_model="openrouter/free",
+            llm_timeout_seconds=1,
+        ),
+    )
+    monkeypatch.setattr(
+        AIAnalysisService,
+        "_request_llm_json",
+        staticmethod(lambda _prompt: (_ for _ in ()).throw(RuntimeError("network"))),
+    )
+
+    result = service.generate_report(db=object(), dataset=SimpleNamespace(id=10))
+
+    assert build_metrics.call_count == 1
+    assert result["mode"] == "rule_based"
+    assert result["metrics"] is metrics
 
 
 def test_inventory_fallback_uses_only_real_inventory_metrics() -> None:

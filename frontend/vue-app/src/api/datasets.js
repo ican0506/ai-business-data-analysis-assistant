@@ -29,7 +29,7 @@ export function analyzeDataset(datasetId) {
   if (existingRequest) return existingRequest
 
   const request = http.post(`/api/v1/datasets/${datasetId}/ai-analysis`, null, {
-    timeout: 30000,
+    timeout: 40000,
     timeoutMessage: 'AI 服务响应较慢，请稍后重试。',
   }).then((response) => response.data)
   pendingAnalysisRequests.set(datasetId, request)

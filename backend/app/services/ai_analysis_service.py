@@ -9,6 +9,9 @@ from app.services.metrics_service import MetricsService
 logger = logging.getLogger(__name__)
 
 
+LLM_ENABLED_PROVIDERS = frozenset({"deepseek", "openrouter"})
+
+
 class AIAnalysisService:
     def __init__(self) -> None:
         self.metrics_service = MetricsService()
@@ -22,9 +25,18 @@ class AIAnalysisService:
         analysis_context = self.build_analysis_context(metrics)
         fallback = self._build_rule_report(metrics, analysis_context)
         settings = get_settings()
-        if settings.llm_provider == "deepseek" and settings.llm_api_key:
+        if AIAnalysisService.is_llm_enabled(settings):
             return self._generate_with_deepseek(metrics, analysis_context, fallback)
         return fallback
+
+    @staticmethod
+    def is_llm_enabled(settings=None) -> bool:
+        """Whether the configured provider can use the shared OpenAI-compatible client."""
+        configured = settings or get_settings()
+        return (
+            configured.llm_provider in LLM_ENABLED_PROVIDERS
+            and bool(configured.llm_api_key)
+        )
 
     @staticmethod
     def build_analysis_context(metrics: dict) -> dict:
@@ -556,8 +568,8 @@ class AIAnalysisService:
             f"真实指标：{AIAnalysisService._deepseek_metrics_payload(metrics, analysis_context)}"
         )
         try:
-            generated = AIAnalysisService._request_deepseek_json(prompt)
-            return {**fallback, **generated, "mode": "deepseek"}
+            generated = AIAnalysisService._request_llm_json(prompt)
+            return {**fallback, **generated, "mode": settings.llm_provider}
         except Exception as error:
             logger.warning(
                 "LLM analysis failed; using rule-based fallback provider=%s model=%s error_type=%s",
@@ -568,8 +580,8 @@ class AIAnalysisService:
             return fallback
 
     @staticmethod
-    def _request_deepseek_json(prompt: str) -> dict:
-        """Call the project's configured DeepSeek endpoint for one JSON response."""
+    def _request_llm_json(prompt: str) -> dict:
+        """Call the configured OpenAI-compatible LLM endpoint for one JSON response."""
         from openai import OpenAI
 
         settings = get_settings()
@@ -579,11 +591,20 @@ class AIAnalysisService:
             timeout=settings.llm_timeout_seconds,
             max_retries=0,
         )
-        response = client.chat.completions.create(
-            model=settings.llm_model,
-            messages=[{"role": "user", "content": prompt}],
-            reasoning_effort="max",
-            extra_body={"thinking": {"type": "enabled"}},
-            response_format={"type": "json_object"},
-        )
+        request_options = {
+            "model": settings.llm_model,
+            "messages": [{"role": "user", "content": prompt}],
+            "response_format": {"type": "json_object"},
+        }
+        if settings.llm_provider == "deepseek":
+            request_options.update(
+                reasoning_effort="max",
+                extra_body={"thinking": {"type": "enabled"}},
+            )
+        response = client.chat.completions.create(**request_options)
         return json.loads(response.choices[0].message.content or "{}")
+
+    @staticmethod
+    def _request_deepseek_json(prompt: str) -> dict:
+        """Backward-compatible alias for legacy callers of the shared JSON request."""
+        return AIAnalysisService._request_llm_json(prompt)

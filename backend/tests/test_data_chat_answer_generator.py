@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.services.data_chat.answer_generator import AnswerGenerator
@@ -29,6 +30,7 @@ def test_rule_based_answer_supports_top_n_and_trend() -> None:
         query_plan={"metrics": ["sales_amount"], "group_by": ["product"], "limit": 2},
         result={"groups": [{"product": "A", "sales_amount": 56000}, {"product": "B", "sales_amount": 43000}]},
         dataset_name="orders.csv",
+        use_deepseek=False,
     )
     trend = _generator().generate(
         question="月度趋势",
@@ -63,7 +65,7 @@ def test_rule_based_answer_distinguishes_unavailable_from_zero() -> None:
 
 
 def test_deepseek_failure_falls_back_without_losing_real_result() -> None:
-    with patch("app.services.data_chat.answer_generator.AIAnalysisService._request_deepseek_json", side_effect=TimeoutError):
+    with patch("app.services.data_chat.answer_generator.AIAnalysisService._request_llm_json", side_effect=TimeoutError):
         answer = _generator().generate(
             question="销售额是多少？",
             query_plan={"metrics": ["sales_amount"]},
@@ -76,14 +78,18 @@ def test_deepseek_failure_falls_back_without_losing_real_result() -> None:
     assert "100.00" in answer["answer"]
 
 
-def test_deepseek_prompt_contains_only_structured_inputs() -> None:
+def test_deepseek_prompt_contains_only_structured_inputs(monkeypatch) -> None:
     captured: list[str] = []
+    monkeypatch.setattr(
+        "app.services.data_chat.answer_generator.get_settings",
+        lambda: SimpleNamespace(llm_provider="deepseek", llm_api_key="configured"),
+    )
 
     def fake_request(prompt: str) -> dict:
         captured.append(prompt)
         return {"answer": "销售额为100.00元。"}
 
-    with patch("app.services.data_chat.answer_generator.AIAnalysisService._request_deepseek_json", side_effect=fake_request):
+    with patch("app.services.data_chat.answer_generator.AIAnalysisService._request_llm_json", side_effect=fake_request):
         answer = _generator().generate(
             question="销售额是多少？",
             query_plan={"metrics": ["sales_amount"]},
@@ -96,3 +102,23 @@ def test_deepseek_prompt_contains_only_structured_inputs() -> None:
     assert "order_id" not in captured[0]
     assert "数据库" in captured[0]
     assert "100" in captured[0]
+
+
+def test_openrouter_uses_shared_llm_request_and_reports_provider_mode(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.services.data_chat.answer_generator.get_settings",
+        lambda: SimpleNamespace(llm_provider="openrouter", llm_api_key="configured"),
+    )
+    with patch(
+        "app.services.data_chat.answer_generator.AIAnalysisService._request_llm_json",
+        return_value={"answer": "销售额为100.00元。"},
+    ) as request:
+        answer = _generator().generate(
+            question="销售额是多少？",
+            query_plan={"metrics": ["sales_amount"]},
+            result={"metrics": {"sales_amount": 100}},
+            dataset_name="orders.csv",
+        )
+
+    assert request.call_count == 1
+    assert answer["answer_mode"] == "openrouter"

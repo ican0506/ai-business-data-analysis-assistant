@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import calendar
+import json
 import re
 from datetime import date
 from typing import Callable
@@ -30,6 +31,10 @@ class QuestionClarificationRequired(ValueError):
 
 class QueryPlanParseError(ValueError):
     """Neither a rule nor the constrained LLM payload produced a safe plan."""
+
+    def __init__(self, detail: str, status_code: int = 400) -> None:
+        super().__init__(detail)
+        self.status_code = status_code
 
 
 class RuleBasedQuestionInterpreter:
@@ -212,7 +217,7 @@ class LLMQuestionInterpreter:
     """Constrained fallback: an LLM can only emit a Pydantic-validated plan."""
 
     def __init__(self, request_json: Callable[[str], dict] | None = None) -> None:
-        self._request_json = request_json or AIAnalysisService._request_deepseek_json
+        self._request_json = request_json or AIAnalysisService._request_llm_json
 
     def interpret(self, question: str) -> DataChatQueryPlan:
         prompt = (
@@ -221,12 +226,36 @@ class LLMQuestionInterpreter:
             "只能输出 JSON，不得输出 SQL、Python、Markdown、解释文字或额外字段。"
             "只允许 domain=order；metrics 只允许 sales_amount、sales_quantity、order_count、average_order_value；"
             "filters 只允许 region、product、category；group_by 只允许 product、category、region、month；"
-            "sort 只允许 metrics 中的字段和 asc/desc；limit 为 1 到 100。"
+            "sort 只能是对象 {\"metric\":\"sales_amount\",\"direction\":\"desc\"}，"
+            "其中 metric 必须来自 metrics，direction 只能是 asc 或 desc；sort 绝不能是数组，也不得使用 field 键。"
+            "limit 为 1 到 100。"
+            "例如“哪个地区销售额最高”应输出 "
+            "{\"domain\":\"order\",\"metrics\":[\"sales_amount\"],\"filters\":{},"
+            "\"group_by\":[\"region\"],\"sort\":{\"metric\":\"sales_amount\",\"direction\":\"desc\"},\"limit\":1}。"
             "无法安全解析时，输出 {\"domain\":\"unsupported\"}。\n"
             f"用户问题：{question}"
         )
         try:
             payload = self._request_json(prompt)
-            return DataChatQueryPlan.model_validate(payload)
         except Exception as error:
-            raise QueryPlanParseError("当前暂不支持该类型的数据查询。") from error
+            raise self._provider_error(error) from error
+
+        if isinstance(payload, dict) and payload.get("domain") == "unsupported":
+            raise QueryPlanParseError("当前暂不支持该类型的数据查询。")
+        try:
+            return DataChatQueryPlan.model_validate(payload)
+        except ValidationError as error:
+            raise QueryPlanParseError("AI 解析结果未通过安全校验。", status_code=422) from error
+
+    @staticmethod
+    def _provider_error(error: Exception) -> QueryPlanParseError:
+        status_code = getattr(error, "status_code", None)
+        if status_code in {401, 403}:
+            return QueryPlanParseError("AI 解析服务认证或权限异常。", status_code=502)
+        if status_code == 402:
+            return QueryPlanParseError("AI 解析服务额度或计费异常。", status_code=402)
+        if status_code == 429:
+            return QueryPlanParseError("AI 解析服务请求频率受限，请稍后重试。", status_code=429)
+        if isinstance(error, json.JSONDecodeError):
+            return QueryPlanParseError("AI 未能可靠理解当前问题。", status_code=502)
+        return QueryPlanParseError("AI 解析服务暂时不可用。", status_code=503)

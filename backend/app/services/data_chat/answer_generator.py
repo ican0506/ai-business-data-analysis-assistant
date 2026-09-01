@@ -36,19 +36,19 @@ class AnswerGenerator:
         fallback = self._rule_based(question, query_plan, result)
         if use_deepseek is None:
             settings = get_settings()
-            use_deepseek = settings.llm_provider == "deepseek" and bool(settings.llm_api_key)
+            use_deepseek = AIAnalysisService.is_llm_enabled(settings)
         if not use_deepseek:
             return {"answer": fallback, "answer_mode": "rule_based"}
 
         prompt = self._build_prompt(question, query_plan, result, dataset_name)
         try:
-            payload = AIAnalysisService._request_deepseek_json(prompt)
+            payload = AIAnalysisService._request_llm_json(prompt)
             answer = payload.get("answer") if isinstance(payload, dict) else None
             if not isinstance(answer, str) or not answer.strip():
                 raise ValueError("LLM 返回空回答")
             if not self._numbers_are_grounded(answer, query_plan, result):
                 raise ValueError("LLM 回答包含结构化结果之外的数字")
-            return {"answer": answer.strip(), "answer_mode": "deepseek"}
+            return {"answer": answer.strip(), "answer_mode": get_settings().llm_provider}
         except Exception as error:
             logger.warning("Data Chat answer generation failed; using rule fallback error_type=%s", type(error).__name__)
             return {"answer": fallback, "answer_mode": "rule_based"}

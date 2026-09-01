@@ -8,6 +8,7 @@ const emit = defineEmits(['update:modelValue', 'save', 'reset'])
 const overrides = ref({})
 const rows = computed(() => {
   const fieldMapping = props.mapping?.field_mapping || {}
+  if (Array.isArray(fieldMapping.fields)) return fieldMapping.fields.map((item) => ({ ...item, currentTarget: item.target || null }))
   const mappings = fieldMapping.mappings || []
   const mappedSources = new Set(mappings.map((item) => item.source))
   const result = mappings.map((item) => ({ ...item, currentTarget: item.target }))
@@ -18,6 +19,8 @@ const conflicts = computed(() => props.mapping?.field_mapping?.conflicts || [])
 watch(() => props.mapping, (mapping) => { overrides.value = { ...(mapping?.overrides || {}) } }, { immediate: true, deep: true })
 function selectedOverride(source) { return overrides.value[source] || '' }
 function setOverride(source, target) { const next = { ...overrides.value }; if (target) next[source] = target; else delete next[source]; overrides.value = next }
+function methodLabel(method) { return { override: '用户指定', automatic: '自动识别', canonical: '标准字段', conflict: '映射冲突', unmapped: '未识别' }[method] || '未识别' }
+function methodType(method) { return { override: 'success', automatic: 'primary', canonical: 'primary', conflict: 'warning', unmapped: 'info' }[method] || 'info' }
 </script>
 
 <template>
@@ -27,7 +30,7 @@ function setOverride(source, target) { const next = { ...overrides.value }; if (
     <el-table :data="rows" max-height="410" class="mapping-table">
       <el-table-column prop="source" label="原始字段" min-width="160" />
       <el-table-column label="当前映射" min-width="170"><template #default="{ row }">{{ row.currentTarget || '未映射' }}</template></el-table-column>
-      <el-table-column label="来源" width="115"><template #default="{ row }"><el-tag :type="row.method === 'override' ? 'success' : row.method === 'automatic' ? 'primary' : 'info'" size="small" effect="plain">{{ row.method === 'override' ? '用户指定' : row.method === 'automatic' ? '自动识别' : '未识别' }}</el-tag></template></el-table-column>
+      <el-table-column label="来源" width="115"><template #default="{ row }"><el-tag :type="methodType(row.method)" size="small" effect="plain">{{ methodLabel(row.method) }}</el-tag></template></el-table-column>
       <el-table-column label="人工修正" min-width="250"><template #default="{ row }"><el-select :model-value="selectedOverride(row.source)" clearable placeholder="保持当前自动映射" @update:model-value="setOverride(row.source, $event)"><el-option-group v-for="group in CANONICAL_FIELD_GROUPS" :key="group.label" :label="group.label"><el-option v-for="field in group.fields" :key="field" :label="field" :value="field" /></el-option-group></el-select></template></el-table-column>
     </el-table>
     <template #footer><el-button :disabled="saving" @click="emit('reset')">恢复自动映射</el-button><el-button @click="emit('update:modelValue', false)">取消</el-button><el-button type="primary" :loading="saving" @click="emit('save', overrides)">保存映射</el-button></template>

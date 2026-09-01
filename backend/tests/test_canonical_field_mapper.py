@@ -38,6 +38,14 @@ def test_maps_complete_chinese_student_score_headers_without_mutating_source() -
         ],
         "unmapped_columns": ["备注"],
         "conflicts": [],
+        "fields": [
+            {"source": "学号", "target": "student_id", "method": "automatic"},
+            {"source": "姓名", "target": "student_name", "method": "automatic"},
+            {"source": "科目", "target": "subject", "method": "automatic"},
+            {"source": "成绩", "target": "score", "method": "automatic"},
+            {"source": "班级", "target": "class_name", "method": "automatic"},
+            {"source": "备注", "target": None, "method": "unmapped"},
+        ],
     }
 
 
@@ -77,6 +85,35 @@ def test_maps_real_ecommerce_order_aliases_including_contact_quality_fields() ->
     assert {"customer_id", "customer_name", "region", "sales_amount", "status", "date", "category", "discount", "payment_method"} <= set(mapped.columns)
     assert {"phone", "email", "remark"} <= set(mapped.columns)
     assert metadata["unmapped_columns"] == ["remark"]
+
+
+def test_reports_every_order_source_field_with_its_mapping_status() -> None:
+    frame = pd.DataFrame({
+        "order_id": ["O-1"],
+        "order_date": ["2026-09-01"],
+        "product_name": ["键盘"],
+        "category": ["数码"],
+        "region": ["华东"],
+        "unit_price": [100],
+        "quantity": [2],
+        "discount": [0.9],
+        "order_amount": [180],
+    })
+
+    _mapped, metadata = CanonicalFieldMapper().map_dataframe(frame)
+
+    assert metadata["fields"] == [
+        {"source": "order_id", "target": "order_id", "method": "canonical"},
+        {"source": "order_date", "target": "date", "method": "automatic"},
+        {"source": "product_name", "target": "product", "method": "automatic"},
+        {"source": "category", "target": "category", "method": "canonical"},
+        {"source": "region", "target": "region", "method": "canonical"},
+        {"source": "unit_price", "target": "unit_price", "method": "canonical"},
+        {"source": "quantity", "target": "quantity", "method": "canonical"},
+        {"source": "discount", "target": "discount", "method": "canonical"},
+        {"source": "order_amount", "target": "sales_amount", "method": "automatic"},
+    ]
+    assert metadata["unmapped_columns"] == []
 
 
 def test_maps_phone_and_email_aliases_to_canonical_fields() -> None:

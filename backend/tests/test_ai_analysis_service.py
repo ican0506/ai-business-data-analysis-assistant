@@ -189,6 +189,33 @@ def test_analyze_metrics_returns_business_insight_json() -> None:
     assert "metrics" not in insight
 
 
+def test_rule_based_report_keeps_list_fields_as_arrays(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.services.ai_analysis_service.get_settings",
+        lambda: SimpleNamespace(llm_provider="rule_based"),
+    )
+    insight = AIAnalysisService().analyze_metrics(
+        {
+            "total_rows": 1,
+            "sales_amount": {"total": 0, "average": 0},
+            "completion_rate": None,
+            "growth_rate": None,
+            "top_regions": [],
+            "region_performance": [],
+            "sales_volatility": None,
+            "order_count": 1,
+            "product_quantity": [],
+            "analysis_plan": analysis_plan("order_count", "sales_total"),
+            "available_fields": ["order_id", "sales_amount"],
+        }
+    )
+
+    assert insight["mode"] == "rule_based"
+    for field in ("anomalies", "business_problems", "recommendations"):
+        assert isinstance(insight[field], list)
+        assert all(isinstance(item, str) for item in insight[field])
+
+
 def test_analyze_metrics_skips_unavailable_sales_without_treating_it_as_zero() -> None:
     metrics = {
         "total_rows": 2,
@@ -516,6 +543,54 @@ def test_deepseek_request_enables_max_reasoning_without_temperature(monkeypatch)
     assert captured["extra_body"] == {"thinking": {"type": "enabled"}}
     assert captured["response_format"] == {"type": "json_object"}
     assert "temperature" not in captured
+
+
+def test_llm_report_normalizes_string_list_fields_to_stable_schema(monkeypatch) -> None:
+    """LLM 的单字符串字段不能破坏前端期望的 list[str] 契约。"""
+    monkeypatch.setattr(
+        "app.services.ai_analysis_service.get_settings",
+        lambda: SimpleNamespace(
+            llm_provider="openrouter",
+            llm_api_key="test-key",
+            llm_base_url="https://openrouter.ai/api/v1",
+            llm_model="openrouter/free",
+            llm_timeout_seconds=25,
+        ),
+    )
+    monkeypatch.setattr(
+        AIAnalysisService,
+        "_request_llm_json",
+        staticmethod(
+            lambda _prompt: {
+                "summary": "LLM 摘要",
+                "anomalies": "温度偏高；振动上升",
+                "business_problems": None,
+                "recommendations": "1. 优化库存；2. 调整促销",
+                "report": "LLM 报告",
+            }
+        ),
+    )
+    fallback = {
+        "mode": "rule_based",
+        "summary": "规则摘要",
+        "anomalies": ["规则异常"],
+        "business_problems": ["规则问题"],
+        "recommendations": ["规则建议"],
+        "report": "规则报告",
+    }
+
+    result = AIAnalysisService._generate_with_deepseek(
+        {"total_rows": 0},
+        {"supported_analyses": {}, "skipped_analyses": []},
+        fallback,
+    )
+
+    assert result["mode"] == "openrouter"
+    assert result["summary"] == "LLM 摘要"
+    assert result["anomalies"] == ["温度偏高", "振动上升"]
+    assert result["business_problems"] == ["规则问题"]
+    assert result["recommendations"] == ["优化库存", "调整促销"]
+    assert all(isinstance(item, str) for item in result["recommendations"])
 
 
 def test_inventory_fallback_uses_only_real_inventory_metrics() -> None:

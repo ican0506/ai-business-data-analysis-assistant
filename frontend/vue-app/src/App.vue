@@ -12,6 +12,7 @@ const router = useRouter()
 const auth = useAuthStore()
 
 const isPublicPage = computed(() => route.meta.public === true)
+const isDataChatPage = computed(() => route.name === 'DataChat')
 
 const navigationItems = [
   { index: '/dashboard', title: '数据驾驶舱', description: '核心经营概览' },
@@ -44,7 +45,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <Loading v-if="isRequesting" fullscreen text="正在处理数据请求…" />
+  <Loading v-if="isRequesting && !isDataChatPage" fullscreen text="正在处理数据请求…" />
   <RouterView v-if="isPublicPage" />
 
   <el-container v-else class="app-shell">

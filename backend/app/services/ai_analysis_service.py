@@ -1,11 +1,8 @@
 import json
 import logging
-<<<<<<< Updated upstream
-=======
 import re
 import threading
 from time import perf_counter
->>>>>>> Stashed changes
 
 from app.core.config import get_settings
 from app.models.dataset import Dataset
@@ -603,15 +600,13 @@ class AIAnalysisService:
             "所有数字必须来自输入 metrics；真实为 0 的指标可以正常说明。"
             "可以说明某项因缺少字段未分析，但不得评价该项业务表现，也不得根据字段名称自行补充指标。"
             f"{student_constraints}{inventory_constraints}{order_constraints}"
-            "返回 JSON：summary, anomalies, business_problems, recommendations, report。\n"
+            "返回 JSON：summary, anomalies, business_problems, recommendations, report。"
+            "summary 和 report 必须是字符串；anomalies、business_problems、recommendations 必须是非空字符串数组，"
+            "即使只有一项也必须使用数组，不能返回字符串、null 或对象。\n"
             f"分析上下文：{analysis_context}\n"
             f"真实指标：{AIAnalysisService._deepseek_metrics_payload(metrics, analysis_context)}"
         )
         try:
-<<<<<<< Updated upstream
-            generated = AIAnalysisService._request_llm_json(prompt)
-            return {**fallback, **generated, "mode": settings.llm_provider}
-=======
             logger.info(
                 "llm_started provider=%s model=%s elapsed_ms=%s",
                 settings.llm_provider,
@@ -638,7 +633,6 @@ class AIAnalysisService:
                 AIAnalysisService._elapsed_ms(started_at),
             )
             return AIAnalysisService._return_fallback(fallback, started_at)
->>>>>>> Stashed changes
         except Exception as error:
             logger.warning(
                 "llm_failed provider=%s model=%s error_type=%s elapsed_ms=%s",
@@ -687,6 +681,38 @@ class AIAnalysisService:
         result = outcome.get("result")
         if not isinstance(result, dict):
             raise ValueError("LLM returned an invalid JSON object")
+        return result
+
+    @staticmethod
+    def _normalize_text_list(value: object) -> list[str]:
+        """Normalize model output to the API's stable list[str] contract."""
+        if isinstance(value, str):
+            fragments = re.split(r"[；;\r\n]+", value.strip())
+            return [
+                re.sub(r"^\s*\d+\s*[.、:：)）-]\s*", "", fragment).strip()
+                for fragment in fragments
+                if re.sub(r"^\s*\d+\s*[.、:：)）-]\s*", "", fragment).strip()
+            ]
+        if isinstance(value, (list, tuple)):
+            return [item.strip() for item in value if isinstance(item, str) and item.strip()]
+        return []
+
+    @staticmethod
+    def _normalize_generated_report(fallback: dict, generated: object, mode: str) -> dict:
+        """Keep LLM and rule-based responses compatible for all report consumers."""
+        generated = generated if isinstance(generated, dict) else {}
+        result = {**fallback, **generated, "mode": mode}
+        fallback_summary = fallback.get("summary") if isinstance(fallback.get("summary"), str) else ""
+        result["summary"] = generated.get("summary") if isinstance(generated.get("summary"), str) and generated["summary"].strip() else fallback_summary
+        result["summary"] = result["summary"].strip()
+
+        for field in ("anomalies", "business_problems", "recommendations"):
+            normalized = AIAnalysisService._normalize_text_list(generated.get(field))
+            result[field] = normalized or AIAnalysisService._normalize_text_list(fallback.get(field))
+
+        fallback_report = fallback.get("report") if isinstance(fallback.get("report"), str) else ""
+        result["report"] = generated.get("report") if isinstance(generated.get("report"), str) and generated["report"].strip() else fallback_report
+        result["report"] = result["report"].strip()
         return result
 
     @staticmethod

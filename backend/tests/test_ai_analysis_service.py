@@ -193,6 +193,33 @@ def test_analyze_metrics_returns_business_insight_json() -> None:
     assert "metrics" not in insight
 
 
+def test_rule_based_report_keeps_list_fields_as_arrays(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.services.ai_analysis_service.get_settings",
+        lambda: SimpleNamespace(llm_provider="rule_based"),
+    )
+    insight = AIAnalysisService().analyze_metrics(
+        {
+            "total_rows": 1,
+            "sales_amount": {"total": 0, "average": 0},
+            "completion_rate": None,
+            "growth_rate": None,
+            "top_regions": [],
+            "region_performance": [],
+            "sales_volatility": None,
+            "order_count": 1,
+            "product_quantity": [],
+            "analysis_plan": analysis_plan("order_count", "sales_total"),
+            "available_fields": ["order_id", "sales_amount"],
+        }
+    )
+
+    assert insight["mode"] == "rule_based"
+    for field in ("anomalies", "business_problems", "recommendations"):
+        assert isinstance(insight[field], list)
+        assert all(isinstance(item, str) for item in insight[field])
+
+
 def test_analyze_metrics_skips_unavailable_sales_without_treating_it_as_zero() -> None:
     metrics = {
         "total_rows": 2,
@@ -522,8 +549,6 @@ def test_deepseek_request_enables_max_reasoning_without_temperature(monkeypatch)
     assert "temperature" not in captured
 
 
-<<<<<<< Updated upstream
-=======
 def test_llm_report_normalizes_string_list_fields_to_stable_schema(monkeypatch) -> None:
     """LLM 的单字符串字段不能破坏前端期望的 list[str] 契约。"""
     monkeypatch.setattr(
@@ -664,7 +689,6 @@ def test_generate_report_builds_metrics_once_when_llm_falls_back(monkeypatch) ->
     assert result["metrics"] is metrics
 
 
->>>>>>> Stashed changes
 def test_inventory_fallback_uses_only_real_inventory_metrics() -> None:
     insight = AIAnalysisService().analyze_metrics(inventory_metrics())
 

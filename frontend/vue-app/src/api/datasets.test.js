@@ -13,14 +13,27 @@ describe('数据集 API 请求配置', () => {
     http.post.mockResolvedValue({ data: { mode: 'rule_based' } })
   })
 
-  it('AI 分析使用独立的 60 秒 timeout，不改变全局默认值', async () => {
+  it('AI 分析使用有界 timeout，不改变全局默认值', async () => {
     await analyzeDataset(12)
 
     expect(http.post).toHaveBeenCalledWith(
       '/api/v1/datasets/12/ai-analysis',
       null,
-      { timeout: 60000, timeoutMessage: 'AI 分析请求超时，请稍后重试。' },
+      { timeout: 30000, timeoutMessage: 'AI 服务响应较慢，请稍后重试。' },
     )
+  })
+
+  it('同一数据集分析尚未完成时复用同一请求，不重复发送 POST', async () => {
+    let resolveRequest
+    http.post.mockImplementationOnce(() => new Promise((resolve) => { resolveRequest = resolve }))
+
+    const first = analyzeDataset(12)
+    const second = analyzeDataset(12)
+
+    expect(http.post).toHaveBeenCalledTimes(1)
+    resolveRequest({ data: { mode: 'rule_based' } })
+    await expect(first).resolves.toEqual({ mode: 'rule_based' })
+    await expect(second).resolves.toEqual({ mode: 'rule_based' })
   })
 
   it('普通清洗请求不设置 AI 专属 timeout', async () => {

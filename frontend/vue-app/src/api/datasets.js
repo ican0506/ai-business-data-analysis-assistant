@@ -1,5 +1,7 @@
 import http from './http'
 
+const pendingAnalysisRequests = new Map()
+
 export async function getDatasets() {
   const response = await http.get('/api/v1/datasets')
   return response.data
@@ -22,12 +24,20 @@ export async function cleanDataset(datasetId) {
   return response.data
 }
 
-export async function analyzeDataset(datasetId) {
-  const response = await http.post(`/api/v1/datasets/${datasetId}/ai-analysis`, null, {
-    timeout: 60000,
-    timeoutMessage: 'AI 分析请求超时，请稍后重试。',
+export function analyzeDataset(datasetId) {
+  const existingRequest = pendingAnalysisRequests.get(datasetId)
+  if (existingRequest) return existingRequest
+
+  const request = http.post(`/api/v1/datasets/${datasetId}/ai-analysis`, null, {
+    timeout: 30000,
+    timeoutMessage: 'AI 服务响应较慢，请稍后重试。',
+  }).then((response) => response.data)
+  pendingAnalysisRequests.set(datasetId, request)
+  return request.finally(() => {
+    if (pendingAnalysisRequests.get(datasetId) === request) {
+      pendingAnalysisRequests.delete(datasetId)
+    }
   })
-  return response.data
 }
 
 export async function getDatasetMetrics(datasetId) {

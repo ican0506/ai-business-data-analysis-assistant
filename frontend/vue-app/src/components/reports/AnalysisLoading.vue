@@ -5,6 +5,6 @@ import { Loading } from '@element-plus/icons-vue'
 <template>
   <div class="analysis-loading" aria-live="polite">
     <el-skeleton :rows="8" animated />
-    <div class="loading-copy"><el-icon class="is-loading"><Loading /></el-icon><span>AI 正在解读业务数据，请稍候…</span></div>
+    <div class="loading-copy"><el-icon class="is-loading"><Loading /></el-icon><span>AI 正在生成分析...</span></div>
   </div>
 </template>

@@ -55,6 +55,14 @@ describe('AI 分析页面', () => {
   })
   afterEach(() => document.body.replaceChildren())
 
+  it('页面初始化只加载数据集，不自动重复发送 AI 分析请求', async () => {
+    const host = mountView()
+    await flush()
+
+    expect(analyzeDataset).not.toHaveBeenCalled()
+    expect(host.textContent).toContain('订单分析测试数据集.xlsx')
+  })
+
   it('后端返回 rule_based fallback 时正常展示规则分析报告', async () => {
     analyzeDataset.mockResolvedValue({
       mode: 'rule_based',
@@ -84,5 +92,40 @@ describe('AI 分析页面', () => {
 
     expect(host.textContent).toContain('AI 分析请求超时，请稍后重试。')
     expect(host.textContent).toContain('重新分析')
+  })
+
+  it('分析进行中再次点击不会重复发送同一数据集请求', async () => {
+    let resolveRequest
+    analyzeDataset.mockImplementationOnce(() => new Promise((resolve) => { resolveRequest = resolve }))
+    const host = mountView()
+    await flush()
+
+    const button = host.querySelector('button')
+    button.click()
+    button.click()
+    await flush()
+
+    expect(analyzeDataset).toHaveBeenCalledTimes(1)
+    resolveRequest({ mode: 'rule_based', summary: '规则摘要', anomalies: [], business_problems: [], recommendations: [], report: '报告' })
+    await flush()
+  })
+
+  it('路由数据集切换后只对新数据集发起一次分析', async () => {
+    getDatasets.mockResolvedValue([
+      { id: 7, original_filename: '订单A.xlsx', status: 'CLEANED', row_count: 20, column_count: 6, created_at: '2026-08-18T10:00:00' },
+      { id: 8, original_filename: '订单B.xlsx', status: 'CLEANED', row_count: 30, column_count: 6, created_at: '2026-08-19T10:00:00' },
+    ])
+    analyzeDataset.mockResolvedValue({ mode: 'rule_based', summary: '规则摘要', anomalies: [], business_problems: [], recommendations: [], report: '报告' })
+    const host = mountView()
+    await flush()
+
+    host.querySelector('button').click()
+    await flush()
+    route.query.datasetId = '8'
+    await flush()
+    host.querySelector('button').click()
+    await flush()
+
+    expect(analyzeDataset.mock.calls).toEqual([[7], [8]])
   })
 })

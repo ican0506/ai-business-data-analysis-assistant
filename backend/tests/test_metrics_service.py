@@ -335,3 +335,29 @@ def test_build_metrics_uses_the_latest_cleaning_run_file(monkeypatch, tmp_path) 
 
     assert metrics["dataset_id"] == 7
     assert metrics["sales_amount"]["total"] == 200.0
+
+
+def test_metrics_service_reuses_order_analyzer_moonbit_kpis_without_changing_response_shape(monkeypatch) -> None:
+    calls: list[list[float]] = []
+
+    class FakeMoonBitService:
+        def calculate_order_kpis(self, amounts: list[float]):
+            calls.append(amounts)
+            return {"sales_total": 200.0, "order_count": 2, "average_order_value": 100.0}
+
+    monkeypatch.setattr(
+        "app.services.order_analyzer.MoonBitService", lambda: FakeMoonBitService()
+    )
+
+    metrics = build_metrics(
+        {"order_id": ["O-1", "O-2"], "unit_price": [100, 100], "quantity": [1, 1]}
+    )
+
+    assert calls == [[100.0, 100.0]]
+    assert metrics["sales_amount"] == {
+        "total": 200.0,
+        "average": 100.0,
+        "maximum": 100.0,
+        "minimum": 100.0,
+    }
+    assert metrics["order_count"] == 2

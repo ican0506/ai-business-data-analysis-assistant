@@ -1,13 +1,14 @@
 # AI 智能数据分析助手
 
-面向企业运营场景的全栈数据分析平台。上传 CSV/XLSX 后，系统依次完成清洗、字段识别、领域匹配、Pandas 指标计算、AI 解释及 Excel/Word/PDF 报告导出。
+面向企业运营场景的全栈数据分析平台。项目采用“确定性计算 + AI 解释”架构：Python / Pandas 负责数据清洗与可信数据准备，**MoonBit Core Engine 负责订单核心 KPI 与设备风险规则计算**，DeepSeek 只对结构化结果做解释和建议，不生成核心业务数值。
 
 ## 核心特点
 
 - CSV/XLSX 上传、清洗记录、JWT 鉴权和操作审计
 - `CanonicalFieldMapper` 自动字段映射，支持数据集级人工 override
 - `AnalysisEngine + AnalysisPlanner` 选择可执行分析能力
-- Python / Pandas 计算真实指标；AI 只解释已有结构化结果
+- MoonBit 参与订单销售额、订单数、平均客单价，以及设备温度/振动/故障/状态风险规则
+- Python / Pandas 完成真实数据准备；AI 只解释已有结构化结果
 - Vue3 动态 Dashboard、字段映射、AI 报告与下载中心
 - AI 数据问答（Data Chat）：基于已清洗订单数据的自然语言查询、数据依据展示与按数据集临时会话恢复
 - DeepSeek 可选接入，调用失败自动降级为规则引擎
@@ -21,6 +22,7 @@
 | --- | --- |
 | 前端 | Vue 3、Vite、Pinia、Vue Router、Axios、Element Plus、ECharts |
 | 后端 | FastAPI、SQLAlchemy、Pandas、NumPy、OpenPyXL、python-docx、ReportLab |
+| MoonBit Core Engine | 订单核心 KPI（销售额、订单数、平均客单价）与设备风险阈值规则 |
 | 数据库 | MySQL 8 |
 | AI | DeepSeek（OpenAI-compatible）+ 规则 fallback |
 | 部署 | Docker、Docker Compose、Nginx |
@@ -47,8 +49,9 @@ flowchart TD
   D --> C[数据清洗与字段映射]
   C -->|清洗记录、字段 override| M
   C --> E[AnalysisEngine / AnalysisPlan]
-  E --> P[Pandas 确定性指标计算]
-  P --> K[KPI、趋势、统计与异常检测]
+  E --> P[Pandas 数据校验、可信金额聚合与分析准备]
+  P --> MB[MoonBit Core Engine<br/>订单 KPI 与设备风险规则]
+  MB --> K[KPI、趋势、统计与异常检测]
 
   V --> DC[Vue Data Chat 页面]
   DC -->|用户问题 + dataset_id| DQ[Data Chat API]
@@ -67,6 +70,7 @@ flowchart TD
 
   MF --> MD[生产驾驶舱 / 设备管理]
   MF --> ED[设备规则诊断]
+  ED --> MB
   MF --> BP[经营报告快照]
   MF --> FP[Python 确定性预测]
   FP -->|设备风险、能耗趋势、生产达成| PE[预测解释服务]
@@ -81,6 +85,64 @@ flowchart TD
   R --> F
   F --> V
 ```
+
+## MoonBit Core Engine：真实业务职责
+
+仓库根目录的 [`moonbit/`](./moonbit) 是项目的一部分，不是演示代码。后端通过 [`MoonBitService`](./backend/app/services/moonbit_service.py) 使用 stdin JSON / stdout JSON 调用已构建的 MoonBit 原生程序。
+
+| MoonBit 文件 | 实际业务职责 | Python 保留职责 |
+| --- | --- | --- |
+| `moonbit/core/kpi.mbt` | 对 Python 已验证的订单金额执行销售额、订单数、平均客单价计算 | CSV/XLSX 读取、Pandas 清洗、重复订单处理和可信金额校验 |
+| `moonbit/core/risk.mbt` | 对温度、振动、故障次数和设备状态执行风险阈值规则 | 设备记录查询、既有告警文本与 FastAPI 响应编排 |
+| `moonbit/cmd/main/main.mbt` | JSON 输入输出适配 | 超时控制、严格 JSON 校验、异常日志和 Python fallback |
+
+真实调用链：
+
+```text
+Vue 3
+  ↓ REST API
+FastAPI
+  ↓
+Python / Pandas：读取、清洗、可信数据准备、业务编排
+  ↓
+MoonBit Core Engine：KPI / Risk / Rule Result
+  ↓
+Python：复用既有 Metrics、设备告警、报告与 Data Chat 链路
+  ↓
+DeepSeek：仅解释结构化结果
+  ↓
+Vue 3 展示
+```
+
+MoonBit 订单 KPI 输入：
+
+```json
+{"operation":"order_kpi","verified_order_amounts":[120.0,80.0,0.0]}
+```
+
+输出：
+
+```json
+{"sales_total":200.0,"order_count":3,"average_order_value":66.67}
+```
+
+设备风险输入：
+
+```json
+{"operation":"equipment_risk","temperature":85.0,"vibration":5.2,"fault_count":1,"status":"运行"}
+```
+
+当 MoonBit 引擎未配置、可执行文件不可用、超时、异常退出或返回非法 JSON 时，`MoonBitService` 会返回降级信号，`OrderAnalyzer` 与 `EquipmentManagementService` 自动复用原有 Python 计算，不改变现有 API 返回格式。
+
+### MoonBit 验证状态
+
+以下结果已在 MoonBit CLI `0.1.20260904`、`moonc v0.10.12` 环境中真实验证：
+
+- `moon check`：通过；
+- `moon check --deny-warn`：通过；
+- `moon test`：4 / 4 passed；
+- `moon build --target native --release`：通过，生成 `moonbit/_build/native/release/build/cmd/main/main.exe`；
+- Python → `subprocess` → MoonBit native executable → stdin JSON → stdout JSON：通过。真实桥接测试验证订单金额 `[1200.0, 800.0, 0.0]` 返回销售总额 `2000.0`、订单数 `3`、平均客单价 `666.67`，并验证中文设备状态可通过 UTF-8 JSON 协议得到风险规则结果。
 
 ## 当前支持领域
 
@@ -209,6 +271,41 @@ npm run dev
 
 默认地址：<http://127.0.0.1:5173>。Axios 仅从 `VITE_API_BASE_URL` 读取 API 地址；留空时 Vite 的 `/api` 代理使用 `VITE_API_PROXY_TARGET`（默认 `http://127.0.0.1:8000`）。
 
+### MoonBit Core Engine（可选启用，真实业务计算）
+
+先按 [MoonBit 官方安装文档](https://docs.moonbitlang.com/en/latest/) 安装 MoonBit CLI。当前后端在未配置 MoonBit 引擎时仍可安全运行，并使用既有 Python 确定性计算；要让 MoonBit 实际处理订单 KPI 与设备风险规则，请执行：
+
+```powershell
+cd moonbit
+moon check --deny-warn
+moon test
+moon build --target native --release
+```
+
+构建后的 Windows 原生程序位于模块内的相对路径：
+
+```text
+moonbit/_build/native/release/build/cmd/main/main.exe
+```
+
+将该程序的绝对路径填入 `backend/.env`：
+
+```dotenv
+MOONBIT_ENGINE_ENABLED=true
+MOONBIT_ENGINE_PATH=C:\absolute\path\to\moonbit-core.exe
+MOONBIT_ENGINE_TIMEOUT_SECONDS=1
+```
+
+单独验证 JSON 协议：
+
+```powershell
+cd moonbit
+$moonbitExe = Resolve-Path '.\_build\native\release\build\cmd\main\main.exe'
+'{"operation":"order_kpi","verified_order_amounts":[120.0,80.0]}' | & $moonbitExe
+
+'{"operation":"equipment_risk","temperature":85.0,"vibration":5.2,"fault_count":1,"status":"运行"}' | & $moonbitExe
+```
+
 ### Docker Compose
 
 ```powershell
@@ -252,6 +349,7 @@ MySQL 在**首次创建空的 `mysql_data` volume** 时，会按文件名顺序�
 | `FRONTEND_PORT`、`BACKEND_PORT` | Nginx 与 FastAPI 主机端口 |
 | `CORS_ALLOWED_ORIGINS` | 允许凭据访问的浏览器 Origin 白名单 |
 | `LLM_PROVIDER`、`LLM_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL`、`LLM_TIMEOUT_SECONDS` | 可选大模型配置；DeepSeek 思考模式示例使用 `deepseek-v4-pro`，默认 25 秒超时且不自动重试，失败时降级规则分析 |
+| `MOONBIT_ENGINE_ENABLED`、`MOONBIT_ENGINE_PATH`、`MOONBIT_ENGINE_TIMEOUT_SECONDS` | MoonBit 核心计算引擎开关、原生程序绝对路径与子进程超时；不可用时自动回退 Python |
 
 `backend/.env.example` 用于本地后端，包含 MySQL、存储、上传大小、JWT 和 LLM 变量。`frontend/vue-app/.env.example` 用于前端 API 地址和 Vite 代理。所有 `.env` 文件均被 Git 忽略。
 
@@ -295,9 +393,14 @@ python -m pytest tests -q
 cd ../frontend/vue-app
 npm run test
 npm run build
+
+cd ../../moonbit
+moon check --deny-warn
+moon test
+moon build --target native --release
 ```
 
-最近一次完整验证结果：后端 `217 passed`，前端完整测试通过，`npm run build` 通过。
+MoonBit 测试需要本机已安装 MoonBit CLI；本仓库把 MoonBit 编译输出与依赖缓存忽略，不提交平台相关二进制文件。
 
 项目没有独立 lint 脚本。不要提交 `.env`、密钥、上传/清洗/报告文件、日志、虚拟环境、`node_modules`、`dist` 或 `coverage`。
 

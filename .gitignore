@@ -32,6 +32,10 @@ frontend/vue-app/dist/
 frontend/vue-app/coverage/
 coverage/
 
+# MoonBit generated artifacts and downloaded packages
+moonbit/target/
+moonbit/.mooncakes/
+
 # IDE and OS files
 .idea/
 .vscode/

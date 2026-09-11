@@ -2,6 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.manufacturing import EquipmentRecord
+from app.services.moonbit_service import MoonBitService
 
 
 class EquipmentManagementService:
@@ -46,16 +47,48 @@ class EquipmentManagementService:
         return [latest_by_name[name] for name in sorted(latest_by_name)]
 
     def _alerts_for_record(self, record: EquipmentRecord) -> list[dict]:
+        moonbit_risk = MoonBitService().evaluate_equipment_risk(
+            temperature=float(record.temperature),
+            vibration=float(record.vibration),
+            fault_count=record.fault_count,
+            status=record.status,
+        )
+        if moonbit_risk is not None:
+            return [self._alert_for_rule(record, rule_id) for rule_id in moonbit_risk["triggered_rules"]]
+
         alerts: list[dict] = []
         if record.fault_count > 0:
-            alerts.append(self._alert(record, "fault_count", "高", f"故障次数为 {record.fault_count} 次", record.fault_count))
+            alerts.append(self._alert_for_rule(record, "fault_count"))
         if record.status != self.RUNNING_STATUS:
-            alerts.append(self._alert(record, "status", "中", f"设备状态为“{record.status}”", record.status))
+            alerts.append(self._alert_for_rule(record, "status"))
         if float(record.temperature) >= self.TEMPERATURE_THRESHOLD:
-            alerts.append(self._alert(record, "temperature", "高", f"温度达到 {float(record.temperature):.1f}℃", float(record.temperature), self.TEMPERATURE_THRESHOLD))
+            alerts.append(self._alert_for_rule(record, "temperature"))
         if float(record.vibration) >= self.VIBRATION_THRESHOLD:
-            alerts.append(self._alert(record, "vibration", "高", f"振动值达到 {float(record.vibration):.3f}", float(record.vibration), self.VIBRATION_THRESHOLD))
+            alerts.append(self._alert_for_rule(record, "vibration"))
         return alerts
+
+    def _alert_for_rule(self, record: EquipmentRecord, rule_id: str) -> dict:
+        if rule_id == "fault_count":
+            return self._alert(record, rule_id, "高", f"故障次数为 {record.fault_count} 次", record.fault_count)
+        if rule_id == "status":
+            return self._alert(record, rule_id, "中", f"设备状态为“{record.status}”", record.status)
+        if rule_id == "temperature":
+            return self._alert(
+                record,
+                rule_id,
+                "高",
+                f"温度达到 {float(record.temperature):.1f}℃",
+                float(record.temperature),
+                self.TEMPERATURE_THRESHOLD,
+            )
+        return self._alert(
+            record,
+            "vibration",
+            "高",
+            f"振动值达到 {float(record.vibration):.3f}",
+            float(record.vibration),
+            self.VIBRATION_THRESHOLD,
+        )
 
     def _alert(
         self,

@@ -1,0 +1,5 @@
+// `@test` is used only by black-box `*_test.mbt` files, so it belongs to
+// the test package rather than the production package.
+import {
+  "moonbitlang/core/test" @test,
+} for "test"

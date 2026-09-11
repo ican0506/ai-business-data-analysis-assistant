@@ -1,0 +1,8 @@
+import {
+  "ican0506/ai-business-data-analysis-moonbit/core" @core,
+  "moonbitlang/async",
+  "moonbitlang/async/stdio" @stdio,
+  "moonbitlang/core/json" @json,
+}
+
+pkgtype(kind: "executable")

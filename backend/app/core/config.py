@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://api.deepseek.com"
     llm_model: str = "deepseek-chat"
     llm_timeout_seconds: int = 25
+    moonbit_engine_enabled: bool = False
+    moonbit_engine_path: str = ""
+    moonbit_engine_timeout_seconds: float = 1.0
 
     model_config = SettingsConfigDict(
         env_file=Path(__file__).resolve().parents[2] / ".env",

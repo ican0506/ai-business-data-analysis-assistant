@@ -6,6 +6,8 @@ import unicodedata
 
 import pandas as pd
 
+from app.services.moonbit_service import MoonBitService
+
 
 class OrderAnalyzer:
     """Build deterministic, privacy-safe business facts for order datasets."""
@@ -186,8 +188,20 @@ class OrderAnalyzer:
         values = verified_orders["verified_amount"].dropna()
         order_count = int(len(order_level))
         valid_count = int(len(verified_orders))
-        verified_sales_total = OrderAnalyzer._round(values.sum()) if not values.empty else None
-        average_verified_order_value = OrderAnalyzer._round(values.mean()) if not values.empty else None
+        moonbit_kpis = MoonBitService().calculate_order_kpis(
+            [float(value) for value in values.tolist()],
+        )
+        verified_sales_total = (
+            moonbit_kpis["sales_total"]
+            if moonbit_kpis is not None
+            else OrderAnalyzer._round(values.sum()) if not values.empty else None
+        )
+        average_verified_order_value = (
+            moonbit_kpis["average_order_value"]
+            if moonbit_kpis is not None
+            else OrderAnalyzer._round(values.mean()) if not values.empty else None
+        )
+        order_count = int(moonbit_kpis["order_count"]) if moonbit_kpis is not None else order_count
         unverified_order_count = int(quality["unverified_order_count"])
         no_usable_amount_order_count = int(
             (~order_level["has_verified_amount"] & ~order_level["has_unverified_amount"]).sum()

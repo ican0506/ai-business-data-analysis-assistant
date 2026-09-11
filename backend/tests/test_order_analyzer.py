@@ -260,3 +260,54 @@ def test_order_analyzer_verifies_price_times_quantity_when_discount_column_is_ab
 
     assert analysis["overview"]["verified_sales_total"] == 200.0
     assert analysis["data_quality"]["unverified_order_count"] == 0
+
+
+def test_order_analyzer_uses_moonbit_for_verified_order_kpis_and_keeps_existing_response_shape(
+    monkeypatch,
+) -> None:
+    calls: list[list[float]] = []
+
+    class FakeMoonBitService:
+        def calculate_order_kpis(self, amounts: list[float]) -> dict[str, float | int] | None:
+            calls.append(amounts)
+            return {
+                "sales_total": 350.0,
+                "order_count": 2,
+                "average_order_value": 175.0,
+            }
+
+    monkeypatch.setattr(
+        "app.services.order_analyzer.MoonBitService", lambda: FakeMoonBitService()
+    )
+    frame = pd.DataFrame(
+        {
+            "order_id": ["O-1", "O-1", "O-2"],
+            "unit_price": [100, 50, 100],
+            "quantity": [2, 1, 1],
+        }
+    )
+
+    overview = OrderAnalyzer().analyze(frame, _plan(frame))["overview"]
+
+    assert calls == [[250.0, 100.0]]
+    assert overview["verified_sales_total"] == 350.0
+    assert overview["order_count"] == 2
+    assert overview["average_verified_order_value"] == 175.0
+    assert "moonbit" not in overview
+
+
+def test_order_analyzer_uses_existing_pandas_kpi_when_moonbit_is_unavailable(monkeypatch) -> None:
+    class UnavailableMoonBitService:
+        def calculate_order_kpis(self, amounts: list[float]) -> None:
+            return None
+
+    monkeypatch.setattr(
+        "app.services.order_analyzer.MoonBitService", lambda: UnavailableMoonBitService()
+    )
+    frame = pd.DataFrame({"order_id": ["O-1", "O-2"], "unit_price": [100, 50], "quantity": [2, 1]})
+
+    overview = OrderAnalyzer().analyze(frame, _plan(frame))["overview"]
+
+    assert overview["verified_sales_total"] == 250.0
+    assert overview["order_count"] == 2
+    assert overview["average_verified_order_value"] == 125.0
